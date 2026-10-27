@@ -1,0 +1,198 @@
+// WePlay 1차 스키마 (PLAN.md §6 기준, 1차 범위만)
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PlatformRole {
+  USER
+  MASTER
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum CompanyStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum CompanyRole {
+  ADMIN
+  USER
+}
+
+enum MembershipStatus {
+  APPROVED
+  LEFT
+  REMOVED
+  BLOCKED
+}
+
+enum GroupRole {
+  ADMIN
+  MEMBER
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELED
+  EXPIRED
+}
+
+enum GroupVisibility {
+  PUBLIC
+  PRIVATE
+}
+
+enum RequestType {
+  COMPANY_JOIN
+  GROUP_JOIN
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String?      @unique
+  username     String?      @unique // MASTER 로그인용
+  passwordHash String? // MASTER 전용 (bcrypt)
+  googleSub    String?      @unique
+  name         String
+  avatarUrl    String?
+  platformRole PlatformRole @default(USER)
+  status       UserStatus   @default(ACTIVE)
+  lastLoginAt  DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  memberships      Membership[]
+  groupMembers     GroupMember[]
+  requests         MembershipRequest[] @relation("RequestUser")
+  reviewedRequests MembershipRequest[] @relation("RequestReviewer")
+}
+
+model Company {
+  id                String        @id @default(cuid())
+  name              String        // 활성 회사 이름 중복 금지: 마이그레이션의 partial unique index
+  description       String?
+  joinCode          String        @unique
+  joinCodeRotatedAt DateTime      @default(now())
+  joinCodeEnabled   Boolean       @default(true)
+  status            CompanyStatus @default(ACTIVE)
+  primaryAdminId    String? // 대표 ADMIN userId
+  createdById       String
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  deletedAt         DateTime?
+
+  memberships Membership[]
+  groups      Group[]
+  requests    MembershipRequest[]
+}
+
+model Membership {
+  id        String           @id @default(cuid())
+  userId    String
+  companyId String
+  role      CompanyRole      @default(USER)
+  status    MembershipStatus @default(APPROVED)
+  joinedAt  DateTime         @default(now())
+  leftAt    DateTime?
+  updatedAt DateTime         @updatedAt
+  user      User             @relation(fields: [userId], references: [id])
+  company   Company          @relation(fields: [companyId], references: [id])
+
+  @@unique([userId, companyId])
+  @@index([companyId, status, role])
+}
+
+model Group {
+  id                String    @id @default(cuid())
+  companyId         String
+  name              String
+  description       String?
+  joinCode          String    @unique
+  joinCodeRotatedAt DateTime  @default(now())
+  joinCodeEnabled   Boolean   @default(true)
+  visibility        GroupVisibility @default(PUBLIC) // PUBLIC: 가입 선택 목록에 노출
+  requireApproval   Boolean   @default(true) // false면 가입 즉시 승인
+  createdById       String
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+  company           Company   @relation(fields: [companyId], references: [id])
+
+  members       GroupMember[]
+  requestGroups MembershipRequestGroup[]
+
+  @@index([companyId, deletedAt])
+}
+
+model GroupMember {
+  id        String    @id @default(cuid())
+  groupId   String
+  userId    String
+  companyId String
+  role      GroupRole @default(MEMBER) // 그룹 담당 ADMIN은 그룹당 1명 (uniq_group_admin)
+  joinedAt  DateTime  @default(now())
+  group     Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@unique([groupId, userId])
+  @@index([companyId, userId])
+}
+
+model MembershipRequest {
+  id         String        @id @default(cuid())
+  type       RequestType
+  userId     String
+  companyId  String
+  status     RequestStatus @default(PENDING)
+  message    String?
+  reviewerId String?
+  reviewNote String?
+  reviewedAt DateTime?
+  expiresAt  DateTime
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  user       User          @relation("RequestUser", fields: [userId], references: [id])
+  reviewer   User?         @relation("RequestReviewer", fields: [reviewerId], references: [id])
+  company    Company       @relation(fields: [companyId], references: [id])
+
+  groups MembershipRequestGroup[]
+
+  @@index([companyId, status, createdAt])
+  @@index([userId, status])
+}
+
+model MembershipRequestGroup {
+  requestId String
+  groupId   String
+  approved  Boolean?
+  request   MembershipRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  group     Group             @relation(fields: [groupId], references: [id])
+
+  @@id([requestId, groupId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  companyId  String?
+  actorId    String?
+  action     String
+  targetType String
+  targetId   String
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now())
+
+  @@index([companyId, createdAt])
+  @@index([targetType, targetId])
+}
