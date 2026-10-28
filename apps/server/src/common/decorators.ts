@@ -1,5 +1,5 @@
 import { createParamDecorator, ExecutionContext, SetMetadata } from '@nestjs/common';
-import type { Membership, User } from '@weplay/db';
+import type { GroupMembership, User } from '@weplay/db';
 
 export const IS_PUBLIC = 'isPublic';
 export const Public = () => SetMetadata(IS_PUBLIC, true);
@@ -10,10 +10,10 @@ export const CurrentUser = createParamDecorator(
   (_: unknown, ctx: ExecutionContext): AuthUser => ctx.switchToHttp().getRequest().user,
 );
 
-export interface MembershipContext extends Membership {
+export interface GroupMembershipContext extends GroupMembership {
   isPrimaryAdmin: boolean;
 }
 
-export const CurrentMembership = createParamDecorator(
-  (_: unknown, ctx: ExecutionContext): MembershipContext => ctx.switchToHttp().getRequest().membership,
+export const CurrentGroupMembership = createParamDecorator(
+  (_: unknown, ctx: ExecutionContext): GroupMembershipContext => ctx.switchToHttp().getRequest().groupMembership,
 );

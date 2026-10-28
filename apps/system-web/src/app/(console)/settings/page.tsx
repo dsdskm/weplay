@@ -11,7 +11,7 @@ export default function SettingsPage() {
   const [msg, setMsg] = useState<string>();
   const [error, setError] = useState<string>();
   const change = useMutation({
-    mutationFn: () => api('/auth/master/change-password', { body: { currentPassword, newPassword } }),
+    mutationFn: () => api('/auth/change-password', { body: { currentPassword, newPassword } }),
     onSuccess: () => {
       setMsg('비밀번호가 변경되었습니다.');
       setError(undefined);

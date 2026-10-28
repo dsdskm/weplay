@@ -14,7 +14,7 @@ export class AppError extends HttpException {
   static notFound(message = '찾을 수 없습니다') {
     return new AppError(ErrorCode.NOT_FOUND, message, HttpStatus.NOT_FOUND);
   }
-  static forbidden(message = '권한이 없습니다') {
+  static forbidden(message = '접근할 수 없습니다') {
     return new AppError(ErrorCode.FORBIDDEN, message, HttpStatus.FORBIDDEN);
   }
 }

@@ -4,9 +4,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { api, tokenStore } from './api';
-import type { CompanyHome, Me, MyCompany } from './types';
+import type { GroupHome, Me, MyGroup } from './types';
 
-export const LAST_COMPANY_KEY = 'wp_last_company';
+export const LAST_GROUP_KEY = 'wp_last_group';
 
 export function useRequireAuth() {
   const router = useRouter();
@@ -19,10 +19,10 @@ export function useMe() {
   return useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/me'), enabled: !!tokenStore.get() });
 }
 
-export function useMyCompanies(refetchInterval?: number) {
+export function useMyGroups(refetchInterval?: number) {
   return useQuery({
-    queryKey: ['me', 'companies'],
-    queryFn: () => api<MyCompany[]>('/me/companies'),
+    queryKey: ['me', 'groups'],
+    queryFn: () => api<MyGroup[]>('/me/groups'),
     enabled: !!tokenStore.get(),
     refetchInterval,
   });
@@ -30,15 +30,15 @@ export function useMyCompanies(refetchInterval?: number) {
 
 export function logout() {
   tokenStore.clear();
-  localStorage.removeItem(LAST_COMPANY_KEY);
+  localStorage.removeItem(LAST_GROUP_KEY);
   window.location.href = '/login';
 }
 
-export function useCompanyId() {
-  return useParams<{ companyId: string }>().companyId;
+export function useGroupId() {
+  return useParams<{ groupId: string }>().groupId;
 }
 
-export function useCompany() {
-  const companyId = useCompanyId();
-  return useQuery({ queryKey: ['company', companyId], queryFn: () => api<CompanyHome>(`/companies/${companyId}`) });
+export function useGroup() {
+  const groupId = useGroupId();
+  return useQuery({ queryKey: ['group', groupId], queryFn: () => api<GroupHome>(`/groups/${groupId}`) });
 }

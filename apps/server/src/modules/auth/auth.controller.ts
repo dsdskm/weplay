@@ -1,14 +1,21 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post } from '@nestjs/common';
 import {
   ChangePasswordInput,
   changePasswordSchema,
+  DeactivateInput,
+  deactivateSchema,
   GoogleLoginInput,
   googleLoginSchema,
+  LocalLoginInput,
+  localLoginSchema,
   MasterLoginInput,
   masterLoginSchema,
+  PasswordResetRequestInput,
+  passwordResetRequestSchema,
+  SignupInput,
+  signupSchema,
 } from '@weplay/shared';
 import { AuthUser, CurrentUser, Public } from '../../common/decorators';
-import { MasterGuard } from '../../common/master.guard';
 import { ZodPipe } from '../../common/zod.pipe';
 import { AuthService } from './auth.service';
 
@@ -34,9 +41,31 @@ export class AuthController {
     return this.auth.masterLogin(body);
   }
 
-  @UseGuards(MasterGuard)
-  @Post('master/change-password')
+  @Public()
+  @Post('login')
+  login(@Body(new ZodPipe(localLoginSchema)) body: LocalLoginInput) {
+    return this.auth.localLogin(body);
+  }
+
+  @Public()
+  @Post('signup')
+  signup(@Body(new ZodPipe(signupSchema)) body: SignupInput) {
+    return this.auth.signup(body);
+  }
+
+  @Public()
+  @Post('password-reset')
+  passwordReset(@Body(new ZodPipe(passwordResetRequestSchema)) body: PasswordResetRequestInput) {
+    return this.auth.requestPasswordReset(body.email);
+  }
+
+  @Post('change-password')
   changePassword(@CurrentUser() user: AuthUser, @Body(new ZodPipe(changePasswordSchema)) body: ChangePasswordInput) {
     return this.auth.changePassword(user.id, body);
+  }
+
+  @Post('deactivate')
+  deactivate(@CurrentUser() user: AuthUser, @Body(new ZodPipe(deactivateSchema)) body: DeactivateInput) {
+    return this.auth.deactivate(user.id, body);
   }
 }

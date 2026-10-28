@@ -1,0 +1,2 @@
+-- 계정 상태 추가: DEACTIVATED (비활성)
+ALTER TYPE "UserStatus" ADD VALUE 'DEACTIVATED';

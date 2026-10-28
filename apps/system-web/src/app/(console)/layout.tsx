@@ -9,9 +9,7 @@ import { api, tokenStore } from '@/lib/api';
 
 const nav = [
   { href: '/', label: '대시보드' },
-  { href: '/companies', label: '고객사 · 코드 관리' },
-  { href: '/requests', label: '가입 요청' },
-  { href: '/accounts', label: '계정 관리' },
+  { href: '/groups', label: '그룹 관리' },
   { href: '/settings', label: '내 설정' },
 ];
 

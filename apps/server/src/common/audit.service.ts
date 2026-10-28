@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService, Tx } from './prisma.service';
 
 export interface AuditEntry {
-  companyId?: string | null;
+  groupId?: string | null;
   actorId?: string | null;
   action: string;
   targetType: string;
@@ -19,7 +19,7 @@ export class AuditService {
   log(tx: Tx | PrismaService, entry: AuditEntry) {
     return tx.auditLog.create({
       data: {
-        companyId: entry.companyId ?? null,
+        groupId: entry.groupId ?? null,
         actorId: entry.actorId ?? null,
         action: entry.action,
         targetType: entry.targetType,

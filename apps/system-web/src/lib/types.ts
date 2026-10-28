@@ -6,15 +6,37 @@ export interface UserLite {
 
 export interface AdminUser extends UserLite {
   username: string | null;
+  birthDate: string | null;
+  phone: string | null;
   platformRole: 'USER' | 'MASTER';
-  status: 'ACTIVE' | 'SUSPENDED';
+  status: 'ACTIVE' | 'DEACTIVATED';
   googleSub: string | null;
   lastLoginAt: string | null;
   createdAt: string;
-  memberships: { role: 'ADMIN' | 'USER'; company: { id: string; name: string } }[];
+  groupMemberships: { role: 'ADMIN' | 'USER'; group: { id: string; name: string } }[];
+  teamMembers: { role: 'ADMIN' | 'USER'; team: { id: string; name: string; group: { id: string; name: string } } }[];
 }
 
-export interface CompanyRow {
+export interface AdminUserDetail extends AdminUser {
+  primaryOf: { groups: { id: string; name: string }[]; teams: { id: string; name: string; group: { name: string } }[] };
+  groupMemberships: { role: 'ADMIN' | 'USER'; status: string; joinedAt: string; group: { id: string; name: string } }[];
+  teamMembers: { role: 'ADMIN' | 'USER'; joinedAt: string; team: { id: string; name: string; group: { id: string; name: string } } }[];
+}
+
+export interface Paged<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface AdminTeam {
+  id: string;
+  name: string;
+  group: { id: string; name: string };
+}
+
+export interface GroupRow {
   id: string;
   name: string;
   description: string | null;
@@ -24,43 +46,45 @@ export interface CompanyRow {
   primaryAdminId: string | null;
   createdAt: string;
   memberCount: number;
-  groupCount: number;
+  teamCount: number;
   pendingCount: number;
 }
 
-export interface GroupRow {
+export interface TeamRow {
   id: string;
   name: string;
   description: string | null;
+  primaryAdminId: string | null;
   joinCode: string;
   joinCodeEnabled: boolean;
   visibility: 'PUBLIC' | 'PRIVATE';
   requireApproval: boolean;
   memberCount: number;
-  admin: UserLite | null;
+  admins: UserLite[];
 }
 
-export interface CompanyMember extends UserLite {
+export interface GroupMember extends UserLite {
   role: 'ADMIN' | 'USER';
   status: 'APPROVED' | 'BLOCKED';
   joinedAt: string;
   isPrimaryAdmin: boolean;
+  teams: { id: string; name: string; role: 'ADMIN' | 'USER' }[];
 }
 
-export interface CompanyDetail extends Omit<CompanyRow, 'memberCount' | 'groupCount' | 'pendingCount'> {
-  groups: GroupRow[];
-  members: CompanyMember[];
+export interface GroupDetail extends Omit<GroupRow, 'memberCount' | 'teamCount' | 'pendingCount'> {
+  memberCount: number;
+  teams: TeamRow[];
 }
 
 export interface JoinRequest {
   id: string;
-  type: 'COMPANY_JOIN' | 'GROUP_JOIN';
+  type: 'GROUP_JOIN' | 'TEAM_JOIN';
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELED' | 'EXPIRED';
   message: string | null;
   reviewNote: string | null;
   createdAt: string;
   user: UserLite;
   reviewer: { id: string; name: string } | null;
-  company: { id: string; name: string };
-  groups: { groupId: string; approved: boolean | null; group: { id: string; name: string } }[];
+  group: { id: string; name: string };
+  teams: { teamId: string; approved: boolean | null; team: { id: string; name: string } }[];
 }

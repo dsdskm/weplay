@@ -4,11 +4,12 @@ export interface Me {
   email: string | null;
   avatarUrl: string | null;
   platformRole: 'USER' | 'MASTER';
+  status?: 'ACTIVE' | 'DEACTIVATED';
   createdAt: string;
 }
 
-export interface MyCompany {
-  company: { id: string; name: string; description: string | null };
+export interface MyGroup {
+  group: { id: string; name: string; description: string | null };
   joinStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | 'BLOCKED';
   role?: 'ADMIN' | 'USER';
   isPrimaryAdmin?: boolean;
@@ -27,7 +28,7 @@ export interface UserLite {
 
 export interface JoinRequest {
   id: string;
-  type: 'COMPANY_JOIN' | 'GROUP_JOIN';
+  type: 'GROUP_JOIN' | 'TEAM_JOIN';
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELED' | 'EXPIRED';
   message: string | null;
   reviewNote: string | null;
@@ -35,23 +36,29 @@ export interface JoinRequest {
   reviewedAt: string | null;
   user: UserLite;
   reviewer: { id: string; name: string } | null;
-  company: { id: string; name: string };
-  groups: { groupId: string; approved: boolean | null; group: { id: string; name: string } }[];
+  group: { id: string; name: string };
+  teams: { teamId: string; approved: boolean | null; team: { id: string; name: string } }[];
 }
 
-export interface PublicGroup {
+export type JoinStatus = 'NONE' | 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface PublicTeam {
   id: string;
   name: string;
   description: string | null;
   requireApproval: boolean;
+  joinStatus: JoinStatus;
 }
 
 export interface LookupResult {
-  kind: 'COMPANY' | 'GROUP';
+  kind: 'GROUP' | 'TEAM';
   code: string;
-  company: { id: string; name: string; description: string | null };
-  publicGroups?: PublicGroup[];
-  group?: { id: string; name: string; description: string | null; visibility: 'PUBLIC' | 'PRIVATE'; requireApproval: boolean };
+  joinStatus: JoinStatus;
+  pendingRequestId?: string | null;
+  rejectReason?: string | null;
+  group: { id: string; name: string; description: string | null };
+  publicTeams?: PublicTeam[];
+  team?: { id: string; name: string; description: string | null; visibility: 'PUBLIC' | 'PRIVATE'; requireApproval: boolean };
 }
 
 export interface JoinResult {
@@ -59,25 +66,27 @@ export interface JoinResult {
   autoJoinedCount: number;
 }
 
-export interface CompanyHome {
+export interface GroupHome {
   id: string;
   name: string;
   description: string | null;
   joinCode?: string;
   memberCount: number;
-  groupCount: number;
+  teamCount: number;
   pendingCount: number;
   me: { role: 'ADMIN' | 'USER'; isPrimaryAdmin: boolean; joinedAt: string };
 }
 
-export interface GroupItem {
+export interface TeamItem {
   id: string;
   name: string;
   description: string | null;
   memberCount: number;
-  admin: UserLite | null;
+  admins: UserLite[];
   isMine: boolean;
-  myRole: 'ADMIN' | 'MEMBER' | null;
+  myRole: 'ADMIN' | 'USER' | null;
+  joinStatus: JoinStatus;
+  pendingRequestId?: string | null;
   joinCode?: string;
 }
 
@@ -85,5 +94,12 @@ export interface Member extends UserLite {
   role: 'ADMIN' | 'USER';
   isPrimaryAdmin: boolean;
   joinedAt: string;
-  groups: { id: string; name: string }[];
+  teams: { id: string; name: string }[];
+}
+
+export interface Paged<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
 }

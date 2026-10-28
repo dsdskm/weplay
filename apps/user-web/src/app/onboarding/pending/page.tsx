@@ -4,12 +4,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { Badge, Button, Card, Empty, Logo } from '@/components/ui';
+import { Pager, usePaging } from '@/components/pager';
 import { api } from '@/lib/api';
-import { logout, useMyCompanies, useRequireAuth } from '@/lib/hooks';
+import { logout, useMyGroups, useRequireAuth } from '@/lib/hooks';
 import type { JoinRequest } from '@/lib/types';
 
 const statusLabel: Record<JoinRequest['status'], [string, 'amber' | 'green' | 'rose' | 'slate']> = {
-  PENDING: ['승인 대기', 'amber'],
+  PENDING: ['승인 대기 중', 'amber'],
   APPROVED: ['승인됨', 'green'],
   REJECTED: ['거절됨', 'rose'],
   CANCELED: ['취소됨', 'slate'],
@@ -20,7 +21,7 @@ export default function PendingPage() {
   useRequireAuth();
   const router = useRouter();
   const qc = useQueryClient();
-  const { data: companies } = useMyCompanies(10_000);
+  const { data: groups } = useMyGroups(10_000);
   const { data: requests } = useQuery({
     queryKey: ['me', 'requests'],
     queryFn: () => api<JoinRequest[]>('/me/requests'),
@@ -31,13 +32,14 @@ export default function PendingPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
   });
 
-  const approved = companies?.find((c) => c.joinStatus === 'APPROVED');
+  const approved = groups?.find((c) => c.joinStatus === 'APPROVED');
   const hasPending = requests?.some((r) => r.status === 'PENDING');
 
   useEffect(() => {
-    if (approved && !hasPending) router.replace(`/c/${approved.company.id}`);
+    if (approved && !hasPending) router.replace(`/g/${approved.group.id}`);
   }, [approved, hasPending, router]);
 
+  const pg = usePaging(requests ?? []);
   return (
     <main className="mx-auto max-w-lg space-y-6 p-6 pt-16">
       <div className="flex items-center justify-between">
@@ -53,18 +55,18 @@ export default function PendingPage() {
       </div>
       <div className="space-y-3">
         {requests?.length === 0 && <Empty>가입 요청이 없습니다.</Empty>}
-        {requests?.map((r) => {
+        {pg.items.map((r) => {
           const [label, tone] = statusLabel[r.status];
           return (
             <Card key={r.id} className="space-y-2">
               <div className="flex items-center justify-between">
-                <p className="font-semibold">{r.company.name}</p>
+                <p className="font-semibold">{r.group.name}</p>
                 <Badge tone={tone}>{label}</Badge>
               </div>
-              {r.groups.length > 0 && (
-                <p className="text-sm text-slate-500">그룹: {r.groups.map((g) => g.group.name).join(', ')}</p>
+              {r.teams.length > 0 && (
+                <p className="text-sm text-slate-500">팀: {r.teams.map((g) => g.team.name).join(', ')}</p>
               )}
-              {r.reviewNote && <p className="text-sm text-rose-600">사유: {r.reviewNote}</p>}
+              {r.status === 'REJECTED' && r.reviewNote && <p className="text-sm text-rose-600">거절 사유: {r.reviewNote}</p>}
               <p className="text-xs text-slate-400">{new Date(r.createdAt).toLocaleString('ko-KR')}</p>
               {r.status === 'PENDING' && (
                 <Button variant="secondary" onClick={() => cancel.mutate(r.id)} disabled={cancel.isPending}>
@@ -74,6 +76,7 @@ export default function PendingPage() {
             </Card>
           );
         })}
+          <div className="col-span-full"><Pager page={pg.page} pages={pg.pages} setPage={pg.setPage} total={pg.total} /></div>
       </div>
       <Button variant="secondary" className="w-full" onClick={() => router.push('/onboarding')}>
         다른 코드 입력하기

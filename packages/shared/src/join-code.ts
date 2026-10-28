@@ -1,5 +1,5 @@
-/** 혼동 문자(0,O,1,I,L) 제외 */
-export const JOIN_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+/** 코드는 영문 대문자와 숫자만 사용 */
+export const JOIN_CODE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 export const JOIN_CODE_LENGTH = 8;
 
 /** 입력값 정규화: 하이픈/공백 제거, 대문자화 */

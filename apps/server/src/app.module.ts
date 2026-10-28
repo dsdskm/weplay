@@ -7,7 +7,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { MeModule } from './modules/me/me.module';
 import { JoinModule } from './modules/join/join.module';
 import { RequestsModule } from './modules/requests/requests.module';
-import { CompaniesModule } from './modules/companies/companies.module';
+import { GroupsModule } from './modules/groups/groups.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { HealthController } from './health.controller';
 
@@ -23,7 +23,7 @@ import { HealthController } from './health.controller';
     MeModule,
     JoinModule,
     RequestsModule,
-    CompaniesModule,
+    GroupsModule,
     AdminModule,
   ],
   controllers: [HealthController],

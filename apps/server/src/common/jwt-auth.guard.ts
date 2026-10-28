@@ -35,7 +35,11 @@ export class JwtAuthGuard implements CanActivate {
       select: { id: true, name: true, email: true, username: true, platformRole: true, status: true },
     });
     if (!user) throw unauthorized;
-    if (user.status !== 'ACTIVE') throw new AppError(ErrorCode.USER_SUSPENDED, '정지된 계정입니다', HttpStatus.FORBIDDEN);
+    // 정지/비활성 계정: 내 기본 정보(/me)와 인증(/auth)만 허용, 나머지는 막음
+    const url: string = req.originalUrl ?? req.url ?? '';
+    if (user.status !== 'ACTIVE' && !/^\/api\/v1\/(me(\?|$)|auth\/)/.test(url)) {
+      throw new AppError(ErrorCode.USER_SUSPENDED, '이용할 수 없는 계정입니다', HttpStatus.FORBIDDEN);
+    }
     req.user = user;
     return true;
   }

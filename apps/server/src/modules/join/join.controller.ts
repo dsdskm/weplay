@@ -9,8 +9,8 @@ export class JoinController {
   constructor(private readonly requests: RequestsService) {}
 
   @Post('lookup')
-  lookup(@Body(new ZodPipe(joinLookupSchema)) body: JoinLookupInput) {
-    return this.requests.lookup(body.code);
+  lookup(@CurrentUser() user: AuthUser, @Body(new ZodPipe(joinLookupSchema)) body: JoinLookupInput) {
+    return this.requests.lookup(body.code, user.id);
   }
 
   @Post('requests')

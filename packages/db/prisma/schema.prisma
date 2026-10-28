@@ -15,29 +15,29 @@ enum PlatformRole {
 
 enum UserStatus {
   ACTIVE
-  SUSPENDED
+  DEACTIVATED
 }
 
-enum CompanyStatus {
+enum GroupStatus {
   ACTIVE
   SUSPENDED
 }
 
-enum CompanyRole {
+enum GroupRole {
   ADMIN
   USER
 }
 
-enum MembershipStatus {
+enum GroupMembershipStatus {
   APPROVED
   LEFT
   REMOVED
   BLOCKED
 }
 
-enum GroupRole {
+enum TeamRole {
   ADMIN
-  MEMBER
+  USER
 }
 
 enum RequestStatus {
@@ -48,14 +48,14 @@ enum RequestStatus {
   EXPIRED
 }
 
-enum GroupVisibility {
+enum TeamVisibility {
   PUBLIC
   PRIVATE
 }
 
 enum RequestType {
-  COMPANY_JOIN
   GROUP_JOIN
+  TEAM_JOIN
 }
 
 model User {
@@ -65,6 +65,8 @@ model User {
   passwordHash String? // MASTER 전용 (bcrypt)
   googleSub    String?      @unique
   name         String
+  birthDate    DateTime?    @db.Date
+  phone        String?
   avatarUrl    String?
   platformRole PlatformRole @default(USER)
   status       UserStatus   @default(ACTIVE)
@@ -72,88 +74,89 @@ model User {
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
-  memberships      Membership[]
-  groupMembers     GroupMember[]
-  requests         MembershipRequest[] @relation("RequestUser")
-  reviewedRequests MembershipRequest[] @relation("RequestReviewer")
-}
-
-model Company {
-  id                String        @id @default(cuid())
-  name              String        // 활성 회사 이름 중복 금지: 마이그레이션의 partial unique index
-  description       String?
-  joinCode          String        @unique
-  joinCodeRotatedAt DateTime      @default(now())
-  joinCodeEnabled   Boolean       @default(true)
-  status            CompanyStatus @default(ACTIVE)
-  primaryAdminId    String? // 대표 ADMIN userId
-  createdById       String
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-  deletedAt         DateTime?
-
-  memberships Membership[]
-  groups      Group[]
-  requests    MembershipRequest[]
-}
-
-model Membership {
-  id        String           @id @default(cuid())
-  userId    String
-  companyId String
-  role      CompanyRole      @default(USER)
-  status    MembershipStatus @default(APPROVED)
-  joinedAt  DateTime         @default(now())
-  leftAt    DateTime?
-  updatedAt DateTime         @updatedAt
-  user      User             @relation(fields: [userId], references: [id])
-  company   Company          @relation(fields: [companyId], references: [id])
-
-  @@unique([userId, companyId])
-  @@index([companyId, status, role])
+  groupMemberships GroupMembership[]
+  teamMembers      TeamMember[]
+  requests         GroupMembershipRequest[] @relation("RequestUser")
+  reviewedRequests GroupMembershipRequest[] @relation("RequestReviewer")
 }
 
 model Group {
-  id                String    @id @default(cuid())
-  companyId         String
+  id                String      @id @default(cuid())
+  name              String // 활성 그룹 이름 중복 금지: 마이그레이션의 partial unique index
+  description       String?
+  joinCode          String      @unique
+  joinCodeRotatedAt DateTime    @default(now())
+  joinCodeEnabled   Boolean     @default(true)
+  status            GroupStatus @default(ACTIVE)
+  primaryAdminId    String? // 대표 ADMIN userId
+  createdById       String
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  deletedAt         DateTime?
+
+  groupMemberships GroupMembership[]
+  teams            Team[]
+  requests         GroupMembershipRequest[]
+}
+
+model GroupMembership {
+  id        String                @id @default(cuid())
+  userId    String
+  groupId   String
+  role      GroupRole             @default(USER)
+  status    GroupMembershipStatus @default(APPROVED)
+  joinedAt  DateTime              @default(now())
+  leftAt    DateTime?
+  updatedAt DateTime              @updatedAt
+  user      User                  @relation(fields: [userId], references: [id])
+  group     Group                 @relation(fields: [groupId], references: [id])
+
+  @@unique([userId, groupId])
+  @@index([groupId, status, role])
+}
+
+model Team {
+  id                String         @id @default(cuid())
+  primaryAdminId String?   // 대표 TEAM_ADMIN userId
+  groupId           String
   name              String
   description       String?
-  joinCode          String    @unique
-  joinCodeRotatedAt DateTime  @default(now())
-  joinCodeEnabled   Boolean   @default(true)
-  visibility        GroupVisibility @default(PUBLIC) // PUBLIC: 가입 선택 목록에 노출
-  requireApproval   Boolean   @default(true) // false면 가입 즉시 승인
+  joinCode          String         @unique
+  joinCodeRotatedAt DateTime       @default(now())
+  joinCodeEnabled   Boolean        @default(true)
+  visibility        TeamVisibility @default(PUBLIC) // PUBLIC: 가입 선택 목록에 노출
+  requireApproval   Boolean        @default(true) // false면 가입 즉시 승인
   createdById       String
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
   deletedAt         DateTime?
-  company           Company   @relation(fields: [companyId], references: [id])
+  group             Group          @relation(fields: [groupId], references: [id])
 
-  members       GroupMember[]
-  requestGroups MembershipRequestGroup[]
+  members      TeamMember[]
+  requestTeams MembershipRequestTeam[]
 
-  @@index([companyId, deletedAt])
+  @@index([groupId, deletedAt])
 }
 
-model GroupMember {
-  id        String    @id @default(cuid())
-  groupId   String
-  userId    String
-  companyId String
-  role      GroupRole @default(MEMBER) // 그룹 담당 ADMIN은 그룹당 1명 (uniq_group_admin)
-  joinedAt  DateTime  @default(now())
-  group     Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  user      User      @relation(fields: [userId], references: [id])
+model TeamMember {
+  id       String   @id @default(cuid())
+  teamId   String
+  userId   String
+  groupId  String
+  role     TeamRole @default(USER) // 팀 ADMIN은 여러 명 가능
+  joinedAt DateTime @default(now())
+  team     Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id])
 
-  @@unique([groupId, userId])
-  @@index([companyId, userId])
+  @@unique([teamId, userId])
+  @@index([groupId, userId])
 }
 
-model MembershipRequest {
+model GroupMembershipRequest {
   id         String        @id @default(cuid())
   type       RequestType
   userId     String
-  companyId  String
+  groupId    String
   status     RequestStatus @default(PENDING)
   message    String?
   reviewerId String?
@@ -164,27 +167,27 @@ model MembershipRequest {
   updatedAt  DateTime      @updatedAt
   user       User          @relation("RequestUser", fields: [userId], references: [id])
   reviewer   User?         @relation("RequestReviewer", fields: [reviewerId], references: [id])
-  company    Company       @relation(fields: [companyId], references: [id])
+  group      Group         @relation(fields: [groupId], references: [id])
 
-  groups MembershipRequestGroup[]
+  teams MembershipRequestTeam[]
 
-  @@index([companyId, status, createdAt])
+  @@index([groupId, status, createdAt])
   @@index([userId, status])
 }
 
-model MembershipRequestGroup {
+model MembershipRequestTeam {
   requestId String
-  groupId   String
+  teamId    String
   approved  Boolean?
-  request   MembershipRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  group     Group             @relation(fields: [groupId], references: [id])
+  request   GroupMembershipRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  team      Team                   @relation(fields: [teamId], references: [id])
 
-  @@id([requestId, groupId])
+  @@id([requestId, teamId])
 }
 
 model AuditLog {
   id         String   @id @default(cuid())
-  companyId  String?
+  groupId    String?
   actorId    String?
   action     String
   targetType String
@@ -193,6 +196,6 @@ model AuditLog {
   after      Json?
   createdAt  DateTime @default(now())
 
-  @@index([companyId, createdAt])
+  @@index([groupId, createdAt])
   @@index([targetType, targetId])
 }

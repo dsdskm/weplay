@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
-import { MembershipsService } from './memberships.service';
+import { GroupMembershipsService } from './group-memberships.service';
 import { RequestsService } from './requests.service';
 
-@Module({ providers: [RequestsService, MembershipsService], exports: [RequestsService, MembershipsService] })
+@Module({ providers: [RequestsService, GroupMembershipsService], exports: [RequestsService, GroupMembershipsService] })
 export class RequestsModule {}

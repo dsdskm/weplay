@@ -15,7 +15,8 @@ export class MeController {
 
   @Get()
   async me(@CurrentUser() user: AuthUser) {
-    return toPublicUser(await this.prisma.user.findUniqueOrThrow({ where: { id: user.id } }));
+    const u = await this.prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    return { ...toPublicUser(u), hasPassword: !!u.passwordHash, status: u.status };
   }
 
   @Patch()
@@ -23,34 +24,34 @@ export class MeController {
     return toPublicUser(await this.prisma.user.update({ where: { id: user.id }, data: body }));
   }
 
-  /** 소속/대기/거절/차단 회사 목록 (통합 joinStatus) */
-  @Get('companies')
-  async companies(@CurrentUser() user: AuthUser) {
-    const [memberships, requests] = await Promise.all([
-      this.prisma.membership.findMany({
-        where: { userId: user.id, status: { in: ['APPROVED', 'BLOCKED'] }, company: { deletedAt: null } },
-        include: { company: true },
+  /** 소속/대기/거절/차단 그룹 목록 (통합 joinStatus) */
+  @Get('groups')
+  async groups(@CurrentUser() user: AuthUser) {
+    const [groupMemberships, requests] = await Promise.all([
+      this.prisma.groupMembership.findMany({
+        where: { userId: user.id, status: { in: ['APPROVED', 'BLOCKED'] }, group: { deletedAt: null } },
+        include: { group: true },
       }),
-      this.prisma.membershipRequest.findMany({
-        where: { userId: user.id, type: 'COMPANY_JOIN', status: { in: ['PENDING', 'REJECTED'] } },
-        include: { company: true },
+      this.prisma.groupMembershipRequest.findMany({
+        where: { userId: user.id, type: 'GROUP_JOIN', status: { in: ['PENDING', 'REJECTED'] } },
+        include: { group: true },
         orderBy: { createdAt: 'desc' },
       }),
     ]);
     const result = new Map<string, any>();
-    for (const m of memberships) {
-      result.set(m.companyId, {
-        company: { id: m.company.id, name: m.company.name, description: m.company.description },
+    for (const m of groupMemberships) {
+      result.set(m.groupId, {
+        group: { id: m.group.id, name: m.group.name, description: m.group.description },
         joinStatus: m.status === 'BLOCKED' ? JoinStatus.BLOCKED : JoinStatus.APPROVED,
         role: m.role,
-        isPrimaryAdmin: m.company.primaryAdminId === user.id,
+        isPrimaryAdmin: m.group.primaryAdminId === user.id,
         joinedAt: m.joinedAt,
       });
     }
     for (const r of requests) {
-      if (result.has(r.companyId)) continue;
-      result.set(r.companyId, {
-        company: { id: r.company.id, name: r.company.name, description: r.company.description },
+      if (result.has(r.groupId)) continue;
+      result.set(r.groupId, {
+        group: { id: r.group.id, name: r.group.name, description: r.group.description },
         joinStatus: r.status === 'PENDING' ? JoinStatus.PENDING : JoinStatus.REJECTED,
         requestId: r.id,
         reviewNote: r.reviewNote,
@@ -62,7 +63,7 @@ export class MeController {
 
   @Get('requests')
   requestsList(@CurrentUser() user: AuthUser) {
-    return this.prisma.membershipRequest.findMany({
+    return this.prisma.groupMembershipRequest.findMany({
       where: { userId: user.id },
       include: requestInclude,
       orderBy: { createdAt: 'desc' },

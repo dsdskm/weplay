@@ -1,0 +1,3 @@
+-- GroupRole: MEMBER → USER (회사 역할과 이름 통일)
+ALTER TYPE "GroupRole" RENAME VALUE 'MEMBER' TO 'USER';
+ALTER TABLE "GroupMember" ALTER COLUMN "role" SET DEFAULT 'USER';
