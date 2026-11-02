@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict TrK4OORi6x0ZOYSlHdwqphUu1hNxVDbQMZvoEQlo32HLGBOsR7HwE7a1zpCPqwS
+\restrict eyRnhfNT8qTzQGsGwXI4bHKcPaMmWsgetLp0HPK2NLzedxgtlmWLqw55ukXldTd
 
 -- Dumped from database version 18.6 (Debian 18.6-1.pgdg13+2)
 -- Dumped by pg_dump version 18.6 (Debian 18.6-1.pgdg13+2)
@@ -18,6 +18,20 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
+
+--
+-- Name: public; Type: SCHEMA; Schema: -; Owner: -
+--
+
+-- *not* creating schema, since initdb creates it
+
+
+--
+-- Name: SCHEMA public; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON SCHEMA public IS '';
+
 
 --
 -- Name: FeatureKey; Type: TYPE; Schema: public; Owner: -
@@ -2929,6 +2943,7 @@ d5b3badd-583a-431c-9d01-2dbd897edc5c	5c5848001eb7ca3edb5f1d9a	ff3b091d-f77f-4429
 7aabaccf-56d5-49a3-8b42-1dc0ac7f0040	5c5848001eb7ca3edb5f1d9a	ff3b091d-f77f-4429-bf27-98eecc84fed3	NUMBER_TOUCH	10199.29	93.13	2026-10-20	2026-10-20 01:09:37.457
 15ab425e-17a1-4e34-9964-0f30beba7c24	5c5848001eb7ca3edb5f1d9a	ff3b091d-f77f-4429-bf27-98eecc84fed3	COLOR_TRAP	24	96	2026-10-20	2026-10-20 04:40:23.044
 97ffdbf5-88d8-4d42-9aa5-abe8cf1b6ec0	5c5848001eb7ca3edb5f1d9a	ff3b091d-f77f-4429-bf27-98eecc84fed3	COLOR_TRAP	27	100	2026-10-20	2026-10-20 01:15:16.328
+cmvyn7gji0004opmnvqkcunkc	5c5848001eb7ca3edb5f1d9a	ca8bbc62-caaf-4ee6-a26d-184b831d1a9d	QUICK_MATH	20	100	2026-11-02	2026-11-02 02:31:31.709
 \.
 
 
@@ -3171,6 +3186,8 @@ cmvykiel20017opkr1qna80qj	5c5848001eb7ca3edb5f1d9a	ca8bbc62-caaf-4ee6-a26d-184b8
 cmvym05ye0002opsd2kug0kg1	5c5848001eb7ca3edb5f1d9a	ca8bbc62-caaf-4ee6-a26d-184b831d1a9d	-1	GAME_FEE	cmvym05yc0001opsdnjfm6998	High / Low 참가비	\N	2026-11-02 01:57:51.783
 cmvym05ye0003opsdk5j0wcxo	5c5848001eb7ca3edb5f1d9a	ca8bbc62-caaf-4ee6-a26d-184b831d1a9d	2	GAME_REWARD	weekly:2026-11-02	주간 챌린지 보너스	\N	2026-11-02 01:57:51.783
 cmvymqyrq0002opmnnbo9guc3	5c5848001eb7ca3edb5f1d9a	ca8bbc62-caaf-4ee6-a26d-184b831d1a9d	-1	GAME_FEE	cmvymqyrn0001opmnurx1q155	초성 퀴즈 참가비	\N	2026-11-02 02:18:42.182
+cmvyn7gjp0005opmnxwyiz15w	5c5848001eb7ca3edb5f1d9a	ca8bbc62-caaf-4ee6-a26d-184b831d1a9d	-1	GAME_FEE	cmvyn7gji0004opmnvqkcunkc	번개 계산 참가비	\N	2026-11-02 02:31:31.717
+cmvyn7gjp0006opmn205k7mln	5c5848001eb7ca3edb5f1d9a	ca8bbc62-caaf-4ee6-a26d-184b831d1a9d	3	GAME_REWARD	cmvyn7gji0004opmnvqkcunkc	번개 계산 100.0점 보상	\N	2026-11-02 02:31:31.717
 \.
 
 
@@ -5855,5 +5872,5 @@ ALTER TABLE ONLY public."TurnParticipant"
 -- PostgreSQL database dump complete
 --
 
-\unrestrict TrK4OORi6x0ZOYSlHdwqphUu1hNxVDbQMZvoEQlo32HLGBOsR7HwE7a1zpCPqwS
+\unrestrict eyRnhfNT8qTzQGsGwXI4bHKcPaMmWsgetLp0HPK2NLzedxgtlmWLqw55ukXldTd
 

@@ -46,17 +46,17 @@ docker exec "$CONTAINER" pg_dump -U "$DB_USER" -d "$SOURCE_DB" --no-owner --no-p
 BEFORE="$(counts "$TEST_DB")"
 
 echo "[3/5] 백업 (db-backup.sh, 대상: $TEST_DB)"
-OUT="$(DB_NAME="$TEST_DB" "$ROOT/scripts/db-backup.sh")"
+BACKUP_NAME="backup-restore-test"
+OUT="$(BACKUP_NAME="$BACKUP_NAME" DB_NAME="$TEST_DB" "$ROOT/scripts/db-backup.sh")"
 echo "$OUT" | tail -1
-BACKUP_NAME="$(echo "$OUT" | sed -n 's#.*백업 완료: .*/scripts/db/\([0-9]\{14\}\)\.sql.*#\1#p' | head -1)"
-if [ -z "$BACKUP_NAME" ] || [ ! -f "$BACKUP_DIR/$BACKUP_NAME.sql" ]; then
+if [ ! -f "$BACKUP_DIR/$BACKUP_NAME.sql" ]; then
   echo "백업 파일을 찾지 못했습니다." >&2
   exit 1
 fi
 
 echo "[4/5] 임시 DB 를 지우고 복원 (db-restore.sh)"
 docker exec -i "$CONTAINER" psql -U "$DB_USER" -d "$TEST_DB" -q -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;" >/dev/null
-DB_NAME="$TEST_DB" "$ROOT/scripts/db-restore.sh" "$BACKUP_NAME" | tail -1
+BACKUP_NAME="$BACKUP_NAME" DB_NAME="$TEST_DB" "$ROOT/scripts/db-restore.sh" -y | tail -1
 AFTER="$(counts "$TEST_DB")"
 
 echo "[5/5] 행 수 비교"

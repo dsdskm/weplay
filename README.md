@@ -47,8 +47,8 @@ pnpm dev                        # 마이그레이션 후 전체 앱 실행
 
 ## 데이터
 
-- 백업: `bash scripts/db-backup.sh` → `scripts/db/<이름>.sql` (업로드 파일이 있으면 `.uploads.tar.gz`도 함께)
-- 복원: `bash scripts/db-restore.sh <백업 이름>` (확장자 생략 가능, 인자가 없으면 가장 최근 백업)
+- 백업: `bash scripts/db-backup.sh` → `scripts/db/latest.sql` (덮어쓰기, 업로드 파일이 있으면 `latest.uploads.tar.gz`도 함께)
+- 복원: `bash scripts/db-restore.sh` (`scripts/db/latest.sql` 로 복원, 복원 전 현재 DB는 `pre-restore-<시각>.sql` 로 자동 백업)
 - 그룹·계정 삭제: `scripts/group-team/delete.sh`, `scripts/account/delete.sh` (관련 테이블을 순서대로 지웁니다)
 - 샘플 데이터: `scripts/feature/generate.sh`, 기능별 `scripts/feature/<기능>/generate-contents.sh`
 
