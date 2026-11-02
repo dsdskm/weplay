@@ -5,13 +5,17 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { RequestList } from '@/components/request-list';
+import { TeamEditDialog } from '@/components/team-edit-dialog';
+import { MemberDialog } from '@/components/member-dialog';
 import { SortTh, sortRows, useSort } from '@/components/sort';
 import { Pager } from '@/components/pager';
 import { Badge, Button, Card, Empty, ErrorText, Input } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import type { GroupDetail, GroupMember, Paged, TeamRow } from '@/lib/types';
+import { useDialog } from '@/components/confirm-dialog';
 
 export default function GroupDetailPage() {
+  const { confirm } = useDialog();
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const qc = useQueryClient();
@@ -42,6 +46,7 @@ export default function GroupDetailPage() {
   const [teamApproval, setTeamApproval] = useState(true);
 
   const [teamFilter, setTeamFilter] = useState('');
+  const [memberQ, setMemberQ] = useState('');
   const [editingMember, setEditingMember] = useState<GroupMember>();
   const teamSort = useSort();
   const memberSort = useSort();
@@ -52,9 +57,11 @@ export default function GroupDetailPage() {
     queryFn: () => api<Paged<TeamRow>>(`/admin/groups/${id}/teams?${new URLSearchParams({ page: String(teamPage), pageSize: '10' })}`),
   });
   const membersQ = useQuery({
-    queryKey: ['group', id, 'members-page', teamFilter, memberPage],
+    queryKey: ['group', id, 'members-page', teamFilter, memberQ, memberPage],
     queryFn: () =>
-      api<Paged<GroupMember>>(`/admin/groups/${id}/members?${new URLSearchParams({ page: String(memberPage), pageSize: '10', ...(teamFilter ? { teamId: teamFilter } : {}) })}`),
+      api<Paged<GroupMember>>(
+        `/admin/groups/${id}/members?${new URLSearchParams({ page: String(memberPage), pageSize: '10', ...(teamFilter ? { teamId: teamFilter } : {}), ...(memberQ ? { q: memberQ } : {}) })}`,
+      ),
   });
   const adminsQ = useQuery({
     queryKey: ['group', id, 'admins'],
@@ -125,7 +132,7 @@ export default function GroupDetailPage() {
             <Button
               variant="danger"
               onClick={async () => {
-                if (!confirm(`${c.name}을(를) 삭제할까요?`)) return;
+                if (!(await confirm({ message: `${c.name}을(를) 삭제할까요? 되돌릴 수 없습니다.`, danger: true }))) return;
                 await run.mutateAsync({ path: `/admin/groups/${id}`, method: 'DELETE' });
                 router.replace('/groups');
               }}
@@ -147,7 +154,10 @@ export default function GroupDetailPage() {
             </Button>
             <Button
               variant="secondary"
-              onClick={() => confirm('코드를 재발급하면 이전 코드는 즉시 무효화되고, 이 그룹의 모든 계정의 그룹·팀 소속이 초기화됩니다.') && run.mutate({ path: `/admin/groups/${id}/join-code/rotate` })}
+              onClick={async () => {
+                if (await confirm({ message: '코드를 재발급하면 이전 코드는 즉시 무효화되고, 이 그룹의 모든 계정의 그룹·팀 소속이 초기화됩니다.', danger: true }))
+                  run.mutate({ path: `/admin/groups/${id}/join-code/rotate` });
+              }}
             >
               재발급
             </Button>
@@ -162,15 +172,36 @@ export default function GroupDetailPage() {
       <Card className="space-y-4">
         <div className="space-y-2">
           <h2 className="font-bold">그룹 ADMIN ({groupAdmins.length})</h2>
-          <div className="flex flex-wrap gap-1">
-            {groupAdmins.length === 0 && <span className="text-sm text-slate-400">지정된 그룹 ADMIN이 없습니다.</span>}
-            {groupAdmins.map((m) => (
-              <Badge key={m.id} tone={m.isPrimaryAdmin ? 'brand' : 'amber'}>
-                {m.name}
-                {m.isPrimaryAdmin && ' (대표)'}
-              </Badge>
-            ))}
-          </div>
+          {groupAdmins.length === 0 ? (
+            <Empty>지정된 그룹 ADMIN이 없습니다.</Empty>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-left text-xs text-slate-500">
+                <tr>
+                  <th className="px-3 py-2">이름</th>
+                  <th className="px-3 py-2">이메일</th>
+                  <th className="px-3 py-2">역할</th>
+                  <th className="px-3 py-2">소속 팀</th>
+                  <th className="px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {groupAdmins.map((m) => (
+                  <tr key={m.id}>
+                    <td className="px-3 py-2 font-semibold">{m.name}</td>
+                    <td className="px-3 py-2 text-slate-500">{m.email}</td>
+                    <td className="px-3 py-2">{m.isPrimaryAdmin ? <Badge tone="brand">대표 ADMIN</Badge> : <Badge tone="amber">ADMIN</Badge>}</td>
+                    <td className="px-3 py-2 text-xs text-slate-400">{m.teams.map((t) => t.name).join(', ') || '없음'}</td>
+                    <td className="px-3 py-2 text-right">
+                      <Button variant="ghost" onClick={() => setEditingMember(m)}>
+                        수정
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
 
         <h2 className="font-bold">팀 ({c.teams.length})</h2>
@@ -254,78 +285,19 @@ export default function GroupDetailPage() {
         )}
       </Card>
 
-      {editing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => setEditingTeam(undefined)}>
-          <Card className="w-full max-w-md space-y-4" >
-            <div onClick={(e) => e.stopPropagation()} className="space-y-4">
-              <h2 className="font-bold">{editing.name} 수정</h2>
-              <label className="block space-y-1 text-sm">
-                <span className="text-slate-500">공개 여부</span>
-                <select
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                  value={editing.visibility}
-                  onChange={(e) => run.mutate({ path: `/admin/teams/${editing.id}`, method: 'PATCH', body: { visibility: e.target.value } })}
-                >
-                  <option value="PUBLIC">공개</option>
-                  <option value="PRIVATE">비공개</option>
-                </select>
-              </label>
-              <label className="block space-y-1 text-sm">
-                <span className="text-slate-500">가입 방식</span>
-                <select
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                  value={editing.requireApproval ? 'APPROVAL' : 'AUTO'}
-                  onChange={(e) => run.mutate({ path: `/admin/teams/${editing.id}`, method: 'PATCH', body: { requireApproval: e.target.value === 'APPROVAL' } })}
-                >
-                  <option value="APPROVAL">수동 승인</option>
-                  <option value="AUTO">자동 승인</option>
-                </select>
-              </label>
-              <div className="space-y-2 text-sm">
-                <span className="text-slate-500">대표 팀 ADMIN</span>
-                {editing.admins.length === 0 ? (
-                  <p className="text-xs text-slate-400">팀 ADMIN이 없습니다. 계정 관리에서 팀 ADMIN을 먼저 지정하세요.</p>
-                ) : (
-                  <select
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                    value={editing.primaryAdminId ?? ''}
-                    onChange={(e) => e.target.value && run.mutate({ path: `/admin/teams/${editing.id}/primary-admin`, method: 'PUT', body: { userId: e.target.value } })}
-                  >
-                    {!editing.primaryAdminId && <option value="">— 미지정 —</option>}
-                    {editing.admins.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-              <div className="flex flex-wrap justify-between gap-2 pt-2">
-                <Button variant="secondary" onClick={() => confirm('팀 코드를 재발급하면 이전 코드는 즉시 무효화되고, 이 팀의 모든 계정의 팀 소속이 초기화됩니다. 그룹 소속은 유지됩니다.') && run.mutate({ path: `/admin/teams/${editing.id}/join-code/rotate` })}>
-                  코드 재발급
-                </Button>
-                <div className="flex gap-2">
-                  <Button
-                    variant="danger"
-                    onClick={() => {
-                      if (!confirm(`${editing.name} 팀을 삭제할까요?`)) return;
-                      run.mutate({ path: `/admin/teams/${editing.id}`, method: 'DELETE' }, { onSuccess: () => setEditingTeam(undefined) });
-                    }}
-                  >
-                    삭제
-                  </Button>
-                  <Button variant="ghost" onClick={() => setEditingTeam(undefined)}>
-                    닫기
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </Card>
-        </div>
-      )}
+      {editing && <TeamEditDialog team={editing} onClose={() => setEditingTeam(undefined)} />}
 
       <Card className="space-y-4">
         <h2 className="font-bold">구성원 ({c.memberCount})</h2>
+        <Input
+          className="max-w-xs"
+          placeholder="이름 또는 이메일 검색"
+          value={memberQ}
+          onChange={(e) => {
+            setMemberQ(e.target.value);
+            setMemberPage(1);
+          }}
+        />
         <div className="flex flex-wrap gap-2">
           <Chip active={!teamFilter} onClick={() => {
               setTeamFilter('');
@@ -343,7 +315,13 @@ export default function GroupDetailPage() {
           ))}
         </div>
         {memberRows.length === 0 ? (
-          <Empty>{teamFilter ? '이 팀에 소속된 구성원이 없습니다.' : '구성원이 없습니다. 그룹 코드로 가입 요청을 받고 승인하세요.'}</Empty>
+          <Empty>
+            {memberQ
+              ? '검색 결과가 없습니다.'
+              : teamFilter
+                ? '이 팀에 소속된 구성원이 없습니다.'
+                : '구성원이 없습니다. 그룹 코드로 가입 요청을 받고 승인하세요.'}
+          </Empty>
         ) : (
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs text-slate-500">
@@ -394,7 +372,6 @@ export default function GroupDetailPage() {
           member={memberRows.find((m) => m.id === editingMember.id) ?? editingMember}
           groupId={id}
           teams={c.teams}
-          onMutate={(path, method, body) => run.mutate({ path, method, body })}
           onClose={() => setEditingMember(undefined)}
         />
       )}
@@ -415,96 +392,5 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
     >
       {children}
     </button>
-  );
-}
-
-/** 구성원 수정 팝업: 그룹 역할, 대표 ADMIN, 소속 팀별 역할과 팀 대표 */
-function MemberDialog({
-  member,
-  groupId,
-  teams,
-  onMutate,
-  onClose,
-}: {
-  member: GroupMember;
-  groupId: string;
-  teams: TeamRow[];
-  onMutate: (path: string, method: string, body: unknown) => void;
-  onClose: () => void;
-}) {
-  const memberTeams = teams.filter((t) => member.teams.some((mt) => mt.id === t.id));
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
-      <Card className="max-h-[90vh] w-full max-w-lg space-y-5 overflow-y-auto">
-        <div onClick={(e) => e.stopPropagation()} className="space-y-5">
-          <div>
-            <h2 className="text-lg font-bold">{member.name}</h2>
-            <p className="text-sm text-slate-500">{member.email}</p>
-          </div>
-
-          <section className="space-y-2">
-            <h3 className="text-sm font-bold">그룹 역할</h3>
-            <div className="flex flex-wrap items-center gap-2">
-              {member.isPrimaryAdmin ? (
-                <Badge tone="brand">대표 ADMIN</Badge>
-              ) : (
-                <select
-                  className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                  value={member.role}
-                  onChange={(e) => onMutate(`/admin/groups/${groupId}/members/${member.id}/role`, 'PATCH', { role: e.target.value })}
-                >
-                  <option value="USER">USER</option>
-                  <option value="ADMIN">그룹 ADMIN</option>
-                </select>
-              )}
-              {member.role === 'ADMIN' && !member.isPrimaryAdmin && (
-                <Button variant="secondary" onClick={() => onMutate(`/admin/groups/${groupId}/primary-admin`, 'PUT', { userId: member.id })}>
-                  대표 ADMIN으로 지정
-                </Button>
-              )}
-            </div>
-          </section>
-
-          <section className="space-y-2">
-            <h3 className="text-sm font-bold">팀</h3>
-            {memberTeams.length === 0 && <p className="text-sm text-slate-400">소속 팀이 없습니다.</p>}
-            {memberTeams.map((t) => {
-              const role = member.teams.find((mt) => mt.id === t.id)?.role ?? 'USER';
-              const isPrimary = t.primaryAdminId === member.id;
-              return (
-                <div key={t.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 p-3 text-sm">
-                  <span className="font-semibold">{t.name}</span>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {isPrimary ? (
-                      <Badge tone="brand">대표 팀 ADMIN</Badge>
-                    ) : (
-                      <select
-                        className="rounded-lg border border-slate-200 px-2 py-1 text-xs"
-                        value={role}
-                        onChange={(e) => onMutate(`/admin/users/${member.id}/team-admin`, 'PUT', { teamId: t.id, role: e.target.value })}
-                      >
-                        <option value="USER">USER</option>
-                        <option value="ADMIN">팀 ADMIN</option>
-                      </select>
-                    )}
-                    {role === 'ADMIN' && !isPrimary && (
-                      <Button variant="ghost" onClick={() => onMutate(`/admin/teams/${t.id}/primary-admin`, 'PUT', { userId: member.id })}>
-                        대표로 지정
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </section>
-
-          <div className="flex justify-end">
-            <Button variant="ghost" onClick={onClose}>
-              닫기
-            </Button>
-          </div>
-        </div>
-      </Card>
-    </div>
   );
 }

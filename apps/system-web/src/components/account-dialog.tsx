@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Button, Card, ErrorText, Input } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import type { AdminTeam, AdminUserDetail, GroupRow } from '@/lib/types';
+import { useDialog } from '@/components/confirm-dialog';
 
 type Role = 'ADMIN' | 'USER';
 type Status = 'ACTIVE' | 'DEACTIVATED';
@@ -18,6 +19,7 @@ interface Props {
 
 /** 계정 추가 / 수정 팝업. 그룹은 여러 개, 팀은 한 개만 선택 가능 */
 export function AccountDialog({ user, defaultPlatformRole = 'USER', onClose }: Props) {
+  const { confirm } = useDialog();
   const qc = useQueryClient();
   const isEdit = !!user;
   const { data: groups } = useQuery({ queryKey: ['groups'], queryFn: () => api<GroupRow[]>('/admin/groups') });
@@ -73,12 +75,6 @@ export function AccountDialog({ user, defaultPlatformRole = 'USER', onClose }: P
       qc.invalidateQueries({ queryKey: ['users'] });
       onClose();
     },
-    onError: (e) => setError(errorMessage(e)),
-  });
-
-  const resetPassword = useMutation({
-    mutationFn: (password: string) => api(`/admin/users/${user?.id}/reset-password`, { body: { password } }),
-    onSuccess: () => setError(undefined),
     onError: (e) => setError(errorMessage(e)),
   });
 
@@ -217,19 +213,10 @@ export function AccountDialog({ user, defaultPlatformRole = 'USER', onClose }: P
             {isEdit ? (
               <div className="flex gap-2">
                 <Button
-                  variant="secondary"
-                  onClick={() => {
-                    const password = prompt('새 비밀번호 (8자 이상)');
-                    if (password) resetPassword.mutate(password);
-                  }}
-                >
-                  비번 재설정
-                </Button>
-                <Button
                   variant="danger"
                   disabled={remove.isPending}
-                  onClick={() => {
-                    if (confirm(`${user?.name} 계정을 삭제할까요? 되돌릴 수 없습니다.`)) remove.mutate();
+                  onClick={async () => {
+                    if (await confirm({ message: `${user?.name} 계정을 삭제할까요? 되돌릴 수 없습니다.`, danger: true })) remove.mutate();
                   }}
                 >
                   삭제

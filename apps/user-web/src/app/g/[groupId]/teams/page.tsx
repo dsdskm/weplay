@@ -7,6 +7,7 @@ import { Badge, Card, cn, Empty } from '@/components/ui';
 import { Pager } from '@/components/pager';
 import { CancelRequestButton } from '@/components/cancel-request-button';
 import { api } from '@/lib/api';
+import { GroupTabs } from '@/components/group-tabs';
 import { useGroupId } from '@/lib/hooks';
 import type { Paged, TeamItem } from '@/lib/types';
 
@@ -23,7 +24,8 @@ export default function TeamsPage() {
   const pg = { items: list, page, pages: Math.max(1, Math.ceil((paged?.total ?? 0) / 10)), setPage, total: paged?.total ?? 0 };
   return (
     <div className="mx-auto max-w-4xl space-y-4">
-      <h1 className="text-2xl font-bold">팀</h1>
+      <h1 className="text-2xl font-bold">팀·구성원</h1>
+      <GroupTabs groupId={groupId} active="teams" />
       <div className="flex gap-2">
         {(['mine', 'all'] as const).map((t) => (
           <button

@@ -22,6 +22,7 @@ export const ErrorCode = {
   PRIMARY_ADMIN_PROTECTED: 'PRIMARY_ADMIN_PROTECTED',
   ONE_TEAM_ONLY: 'ONE_TEAM_ONLY',
   ONE_GROUP_ONLY: 'ONE_GROUP_ONLY',
+  FEATURE_ALREADY_ENABLED: 'FEATURE_ALREADY_ENABLED',
 } as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 

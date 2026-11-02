@@ -59,6 +59,9 @@ enum RequestType {
 }
 
 model User {
+  gameScores GameScore[] @relation("GameScoreUser")
+  pointLedger PointLedger[] @relation("PointLedgerUser")
+  inquiries Inquiry[] @relation("InquiryUser")
   id           String       @id @default(cuid())
   email        String?      @unique
   username     String?      @unique // MASTER 로그인용
@@ -78,9 +81,43 @@ model User {
   teamMembers      TeamMember[]
   requests         GroupMembershipRequest[] @relation("RequestUser")
   reviewedRequests GroupMembershipRequest[] @relation("RequestReviewer")
+  employeeOfTheMonths EmployeeOfTheMonth[]
+  eotmNominationsMade EmployeeOfTheMonthNomination[] @relation("EotmNominator")
+  eotmNominationsReceived EmployeeOfTheMonthNomination[] @relation("EotmNominee")
+  eotmCommentsWritten EmployeeOfTheMonthComment[] @relation("EotmCommentAuthor")
+  eotmCommentsReceived EmployeeOfTheMonthComment[] @relation("EotmCommentTarget")
+  complimentsSent ComplimentCard[] @relation("ComplimentSender")
+  complimentsReceived ComplimentCard[] @relation("ComplimentReceiver")
+  complimentReactions ComplimentReaction[] @relation("ComplimentReactor")
+  pointAdjustments PointAdjustment[] @relation("PointAdjustmentUser")
+  manittoGiven ManittoAssignment[] @relation("ManittoGiver")
+  manittoReceived ManittoAssignment[] @relation("ManittoReceiver")
+  manittoMessages ManittoMessage[] @relation("ManittoSender")
+  rollingPapersAbout RollingPaper[] @relation("PaperTarget")
+  rollingPaperNotes RollingPaperNote[] @relation("PaperAuthor")
+  missionsHosted PhotoMission[] @relation("MissionHost")
+  missionSubmissions PhotoSubmission[] @relation("MissionAuthor")
+  dinnerVotes DinnerVote[]
+  surveysAuthored Survey[] @relation("SurveyAuthor")
+  surveyResponses SurveyResponse[]
+  snackParticipations SnackParticipant[]
+  boardPosts BoardPost[] @relation("BoardAuthor")
+  boardComments BoardComment[] @relation("BoardCommentAuthor")
 }
 
 model Group {
+  /// 그룹별 파일 저장 용량 할당 (MB). MASTER가 설정 (집계는 준비 중)
+  storageQuotaMb Int @default(1024)
+  gameScores GameScore[]
+  pointLedger PointLedger[]
+  bingoBoards BingoBoard[]
+  turnGames TurnGame[]
+  duties Duty[]
+  dailyPicks DailyPick[]
+  gamePhotos GamePhoto[]
+  profileFacts ProfileFact[]
+  notices Notice[]
+  suggestions Suggestion[]
   id                String      @id @default(cuid())
   name              String // 활성 그룹 이름 중복 금지: 마이그레이션의 partial unique index
   description       String?
@@ -97,6 +134,25 @@ model Group {
   groupMemberships GroupMembership[]
   teams            Team[]
   requests         GroupMembershipRequest[]
+  features         GroupFeature[]
+  employeeOfTheMonths EmployeeOfTheMonth[]
+  employeeOfTheMonthNominations EmployeeOfTheMonthNomination[]
+  employeeOfTheMonthSetting EmployeeOfTheMonthSetting?
+  employeeOfTheMonthComments EmployeeOfTheMonthComment[]
+  complimentCards ComplimentCard[]
+  complimentSetting ComplimentSetting?
+  pointRules GroupPointRule[]
+  badgeRules GroupBadgeRule[]
+  pointAdjustments PointAdjustment[]
+  manittoRounds ManittoRound[]
+  rollingPapers RollingPaper[]
+  photoMissions PhotoMission[]
+  dinnerPlaces DinnerPlace[]
+  dinnerPolls DinnerPoll[]
+  surveys Survey[]
+  snackGames SnackGame[]
+  boardPosts BoardPost[]
+  featureSettings FeatureSetting[]
 }
 
 model GroupMembership {
@@ -198,4 +254,878 @@ model AuditLog {
 
   @@index([groupId, createdAt])
   @@index([targetType, targetId])
+}
+
+enum FeatureKey {
+  EMPLOYEE_OF_THE_MONTH
+  COMPLIMENT_CARD
+  POINTS_BADGE
+  MANITTO
+  ROLLING_PAPER
+  PHOTO_MISSION
+  DINNER_VOTE
+  RANDOM_SURVEY
+  SNACK_DRAW
+  BOARD
+  MINI_GAMES
+  DUTY_ROSTER
+  SUGGESTION_BOX
+}
+
+enum FeatureStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// 그룹별 기능 사용 신청·승인 상태 (MASTER 승인 후 APPROVED)
+model GroupFeature {
+  id            String        @id @default(cuid())
+  groupId       String
+  feature       FeatureKey
+  status        FeatureStatus @default(PENDING)
+  requestedById String
+  reviewedById  String?
+  reviewedAt    DateTime?
+  rejectReason  String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  group         Group         @relation(fields: [groupId], references: [id])
+
+  @@unique([groupId, feature])
+  @@index([status])
+}
+
+/// 이달의 사원 선정 결과 (그룹별 월 1명, month = KST 기준 YYYY-MM)
+model EmployeeOfTheMonth {
+  id           String   @id @default(cuid())
+  groupId      String
+  month        String
+  userId       String
+  note         String?
+  selectedById String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  group        Group    @relation(fields: [groupId], references: [id])
+  user         User     @relation(fields: [userId], references: [id])
+
+  @@unique([groupId, month, userId])
+  @@index([userId])
+}
+
+/// 이달의 사원 추천 (구성원이 월별로 1명씩, 같은 달에는 수정 가능)
+model EmployeeOfTheMonthNomination {
+  id          String   @id @default(cuid())
+  groupId     String
+  month       String
+  nominatorId String
+  nomineeId   String
+  reason      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  group       Group    @relation(fields: [groupId], references: [id])
+  nominator   User     @relation("EotmNominator", fields: [nominatorId], references: [id])
+  nominee     User     @relation("EotmNominee", fields: [nomineeId], references: [id])
+
+  @@unique([groupId, month, nominatorId])
+  @@index([nomineeId])
+}
+
+/// 그룹별 공개일 설정 (기본 1일). 해당 월의 결과는 공개일 0시(KST)부터 노출
+model EmployeeOfTheMonthSetting {
+  groupId     String   @id
+  publishDay  Int      @default(1)
+  winnerCount Int      @default(1)
+  updatedById String
+  updatedAt   DateTime @updatedAt
+  group       Group    @relation(fields: [groupId], references: [id])
+}
+
+/// 명예의 전당 댓글 (선정자 단위, 월·선정자 기준. 재선정해도 댓글 유지)
+model EmployeeOfTheMonthComment {
+  id           String   @id @default(cuid())
+  groupId      String
+  month        String
+  targetUserId String
+  authorId     String
+  body         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  group        Group    @relation(fields: [groupId], references: [id])
+  target       User     @relation("EotmCommentTarget", fields: [targetUserId], references: [id])
+  author       User     @relation("EotmCommentAuthor", fields: [authorId], references: [id])
+
+  @@index([groupId, month, targetUserId])
+  @@index([authorId])
+}
+
+/// 칭찬 카드 (구성원 → 구성원, 월 단위 집계. 월 5장 한도)
+model ComplimentCard {
+  id         String   @id @default(cuid())
+  groupId    String
+  senderId   String
+  receiverId String
+  month      String
+  body       String
+  anonymous  Boolean  @default(false)
+  hiddenAt   DateTime?
+  hiddenById String?
+  createdAt  DateTime @default(now())
+  reactions  ComplimentReaction[]
+  group      Group    @relation(fields: [groupId], references: [id])
+  sender     User     @relation("ComplimentSender", fields: [senderId], references: [id])
+  receiver   User     @relation("ComplimentReceiver", fields: [receiverId], references: [id])
+
+  @@index([groupId, month, receiverId])
+  @@index([groupId, senderId, month])
+}
+
+/// 칭찬 카드 설정: 구성원 1명이 하루에 보낼 수 있는 칭찬 수 (관리자 설정)
+model ComplimentSetting {
+  groupId     String   @id
+  dailyLimit  Int      @default(3)
+  updatedById String
+  updatedAt   DateTime @updatedAt
+  group       Group    @relation(fields: [groupId], references: [id])
+}
+
+/// 칭찬 반응 (카드당 한 사람 한 개, 이모지 종류는 고정 목록)
+model ComplimentReaction {
+  id        String   @id @default(cuid())
+  cardId    String
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+  card      ComplimentCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  user      User           @relation("ComplimentReactor", fields: [userId], references: [id])
+
+  @@unique([cardId, userId])
+  @@index([userId])
+}
+
+/// 포인트 기본값 (MASTER 설정). 활동 1건당 점수
+model PointRuleDefault {
+  metric String @id
+  points Int
+}
+
+/// 배지 기본값 (MASTER 설정). 목표 수치와 사용 여부
+model BadgeDefault {
+  key     String  @id
+  target  Int
+  enabled Boolean @default(true)
+}
+
+/// 그룹 포인트 규칙 (관리자 설정). 없으면 기본값 적용
+model GroupPointRule {
+  groupId     String
+  metric      String
+  points      Int
+  updatedById String
+  updatedAt   DateTime @updatedAt
+  group       Group    @relation(fields: [groupId], references: [id])
+
+  @@id([groupId, metric])
+}
+
+/// 그룹 배지 규칙 (관리자 설정). 없으면 기본값 적용
+model GroupBadgeRule {
+  groupId     String
+  key         String
+  target      Int
+  enabled     Boolean
+  updatedById String
+  updatedAt   DateTime @updatedAt
+  group       Group    @relation(fields: [groupId], references: [id])
+
+  @@id([groupId, key])
+}
+
+/// 관리자 수동 포인트 부여(+)/차감(-) 내역
+model PointAdjustment {
+  id        String   @id @default(cuid())
+  groupId   String
+  userId    String
+  amount    Int
+  reason    String
+  actorId   String
+  createdAt DateTime @default(now())
+  group     Group    @relation(fields: [groupId], references: [id])
+  user      User     @relation("PointAdjustmentUser", fields: [userId], references: [id])
+
+  @@index([groupId, userId])
+}
+
+/// 마니또 회차 (그룹당 진행 중 1회차)
+model ManittoRound {
+  id          String   @id @default(cuid())
+  groupId     String
+  status      String   // ACTIVE | ENDED
+  startAt     DateTime
+  endAt       DateTime?
+  endedAt     DateTime?
+  createdById String
+  createdAt   DateTime @default(now())
+  group       Group    @relation(fields: [groupId], references: [id])
+  assignments ManittoAssignment[]
+
+  @@index([groupId, status])
+}
+
+/// 마니또 배정: giver 의 마니또는 receiver. 서로 마니또일 수 있음. 관리자 API에는 노출하지 않음
+model ManittoAssignment {
+  id         String   @id @default(cuid())
+  roundId    String
+  giverId    String
+  receiverId String
+  createdAt  DateTime @default(now())
+  round      ManittoRound     @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  giver      User             @relation("ManittoGiver", fields: [giverId], references: [id])
+  receiver   User             @relation("ManittoReceiver", fields: [receiverId], references: [id])
+  messages   ManittoMessage[]
+
+  @@unique([roundId, giverId])
+  @@unique([roundId, receiverId])
+  @@index([receiverId])
+}
+
+/// 마니또 채팅 메시지 (배정 1건 = 채팅방 1개, 양쪽 모두 익명)
+model ManittoMessage {
+  id           String   @id @default(cuid())
+  assignmentId String
+  senderId     String
+  body         String
+  createdAt    DateTime @default(now())
+  assignment   ManittoAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  sender       User              @relation("ManittoSender", fields: [senderId], references: [id])
+
+  @@index([assignmentId, createdAt])
+}
+
+/// 기능별 설정값(JSON). 관리자가 정하고, 없으면 shared 의 기본값 사용
+model FeatureSetting {
+  groupId     String
+  feature     FeatureKey
+  values      Json
+  updatedById String
+  updatedAt   DateTime @updatedAt
+  group       Group    @relation(fields: [groupId], references: [id])
+
+  @@id([groupId, feature])
+}
+
+/// ───── 롤링페이퍼 ─────
+model RollingPaper {
+  id           String    @id @default(cuid())
+  groupId      String
+  targetUserId String
+  title        String
+  message      String?
+  theme        String    @default("YELLOW")
+  status       String    @default("OPEN") // OPEN | CLOSED
+  closeAt      DateTime?
+  closedAt     DateTime?
+  createdById  String
+  createdAt    DateTime  @default(now())
+  group        Group     @relation(fields: [groupId], references: [id])
+  target       User      @relation("PaperTarget", fields: [targetUserId], references: [id])
+  notes        RollingPaperNote[]
+
+  @@index([groupId, status, createdAt])
+  @@index([targetUserId])
+}
+
+model RollingPaperNote {
+  id        String   @id @default(cuid())
+  paperId   String
+  authorId  String
+  body      String
+  color     String
+  rotation  Int      @default(0)
+  anonymous Boolean  @default(false)
+  createdAt DateTime @default(now())
+  paper     RollingPaper @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  author    User         @relation("PaperAuthor", fields: [authorId], references: [id])
+
+  @@index([paperId, createdAt])
+  @@index([authorId])
+}
+
+/// ───── 사진/영상 미션 ─────
+model PhotoMission {
+  id            String    @id @default(cuid())
+  groupId       String
+  hostId        String
+  theme         String
+  description   String?
+  referenceUrl  String?
+  referenceType String?   // IMAGE | VIDEO
+  status        String    @default("OPEN") // OPEN | CLOSED
+  deadline      DateTime?
+  createdAt     DateTime  @default(now())
+  closedAt      DateTime?
+  group         Group     @relation(fields: [groupId], references: [id])
+  host          User      @relation("MissionHost", fields: [hostId], references: [id])
+  submissions   PhotoSubmission[]
+
+  @@index([groupId, status, createdAt])
+  @@index([hostId])
+}
+
+model PhotoSubmission {
+  id         String   @id @default(cuid())
+  missionId  String
+  authorId   String
+  mediaUrl   String
+  mediaType  String   // IMAGE | VIDEO
+  caption    String?
+  isBest     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  mission    PhotoMission @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  author     User         @relation("MissionAuthor", fields: [authorId], references: [id])
+
+  @@index([missionId, createdAt])
+  @@index([authorId])
+}
+
+/// ───── 회식 투표 ─────
+model DinnerPlace {
+  id        String   @id @default(cuid())
+  groupId   String
+  teamId    String?
+  name      String
+  address   String?
+  lat       Float?
+  lng       Float?
+  category  String?
+  link      String?
+  note      String?
+  addedById String
+  createdAt DateTime @default(now())
+  group     Group    @relation(fields: [groupId], references: [id])
+  pollPlaces DinnerPollPlace[]
+
+  @@index([groupId, teamId])
+}
+
+model DinnerPoll {
+  id          String    @id @default(cuid())
+  groupId     String
+  teamId      String?
+  title       String
+  status      String    @default("OPEN") // OPEN | CLOSED
+  closesAt    DateTime?
+  closedAt    DateTime?
+  createdById String
+  createdAt   DateTime  @default(now())
+  group       Group     @relation(fields: [groupId], references: [id])
+  dates       DinnerPollDate[]
+  places      DinnerPollPlace[]
+  votes       DinnerVote[]
+
+  @@index([groupId, status, createdAt])
+}
+
+model DinnerPollDate {
+  id     String @id @default(cuid())
+  pollId String
+  date   String // YYYY-MM-DD
+  poll   DinnerPoll @relation(fields: [pollId], references: [id], onDelete: Cascade)
+
+  @@unique([pollId, date])
+}
+
+model DinnerPollPlace {
+  id      String @id @default(cuid())
+  pollId  String
+  placeId String
+  poll    DinnerPoll  @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  place   DinnerPlace @relation(fields: [placeId], references: [id])
+
+  @@unique([pollId, placeId])
+}
+
+model DinnerVote {
+  id        String   @id @default(cuid())
+  pollId    String
+  userId    String
+  kind      String   // DATE | PLACE
+  optionId  String   // DinnerPollDate.id | DinnerPollPlace.id
+  createdAt DateTime @default(now())
+  poll      DinnerPoll @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id])
+
+  @@unique([pollId, userId, kind, optionId])
+  @@index([pollId, kind, optionId])
+  @@index([userId])
+}
+
+/// ───── 랜덤 설문 ─────
+model Survey {
+  id           String    @id @default(cuid())
+  groupId      String
+  authorId     String
+  title        String
+  description  String?
+  anonymous    Boolean   @default(true)
+  launchMode   String    @default("MANUAL") // MANUAL | RANDOM
+  status       String    @default("QUEUED") // PENDING(승인 대기) | QUEUED(대기) | ACTIVE | CLOSED | REJECTED
+  rejectReason String?
+  launchAt     DateTime? // RANDOM 모드: 자동 시작 시각
+  endsAt       DateTime?
+  startedAt    DateTime?
+  closedAt     DateTime?
+  createdAt    DateTime  @default(now())
+  group        Group     @relation(fields: [groupId], references: [id])
+  author       User      @relation("SurveyAuthor", fields: [authorId], references: [id])
+  questions    SurveyQuestion[]
+  responses    SurveyResponse[]
+
+  @@index([groupId, status, createdAt])
+}
+
+model SurveyQuestion {
+  id       String @id @default(cuid())
+  surveyId String
+  position Int
+  text     String
+  type     String // SINGLE | MULTI | TEXT | RATING
+  options  Json?
+  survey   Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  @@index([surveyId, position])
+}
+
+model SurveyResponse {
+  id        String   @id @default(cuid())
+  surveyId  String
+  userId    String
+  answers   Json
+  createdAt DateTime @default(now())
+  survey    Survey   @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([surveyId, userId])
+  @@index([userId])
+}
+
+/// ───── 간식 쏘기 랜덤 ─────
+model SnackGame {
+  id          String    @id @default(cuid())
+  groupId     String
+  teamId      String?
+  title       String
+  status      String    @default("RECRUITING") // RECRUITING | DRAWING | DONE | CANCELED
+  winnerCount Int       @default(1)
+  createdById String
+  createdAt   DateTime  @default(now())
+  startedAt   DateTime?
+  doneAt      DateTime?
+  group       Group     @relation(fields: [groupId], references: [id])
+  participants SnackParticipant[]
+  slots       SnackSlot[]
+
+  @@index([groupId, status, createdAt])
+}
+
+model SnackParticipant {
+  id       String   @id @default(cuid())
+  gameId   String
+  userId   String
+  joinedAt DateTime @default(now())
+  game     SnackGame @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user     User      @relation(fields: [userId], references: [id])
+
+  @@unique([gameId, userId])
+  @@index([userId])
+}
+
+model SnackSlot {
+  id        String    @id @default(cuid())
+  gameId    String
+  position  Int
+  isWinner  Boolean
+  drawnById String?
+  drawnAt   DateTime?
+  game      SnackGame @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, position])
+}
+
+/// ───── 자유 게시판 (팀별, teamId null = 그룹 전체) ─────
+model BoardPost {
+  id        String    @id @default(cuid())
+  groupId   String
+  teamId    String?
+  authorId  String
+  title     String
+  body      String
+  anonymous Boolean   @default(false)
+  pinned    Boolean   @default(false)
+  hiddenAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  group     Group     @relation(fields: [groupId], references: [id])
+  author    User      @relation("BoardAuthor", fields: [authorId], references: [id])
+  comments  BoardComment[]
+
+  @@index([groupId, teamId, createdAt])
+  @@index([authorId])
+}
+
+model BoardComment {
+  id        String   @id @default(cuid())
+  postId    String
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  post      BoardPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author    User      @relation("BoardCommentAuthor", fields: [authorId], references: [id])
+
+  @@index([postId, createdAt])
+  @@index([authorId])
+}
+
+/// 기능 전역 활성 여부 (MASTER). 비활성이면 모든 그룹에서 사용·신청 불가, 기존 승인은 유지
+model FeatureConfig {
+  feature   FeatureKey @id
+  active    Boolean    @default(true)
+  /// 기본 탑재: 그룹이 신청하지 않아도 바로 사용 (MASTER가 회수·거절한 그룹은 제외)
+  isDefault Boolean    @default(false)
+  /// 기능 소개 팝업 (MASTER 작성): 한 줄 소개, 본문, 대표 이미지 URL 목록
+  guideSummary String?
+  guideBody    String?
+  guideImages  Json?
+  updatedAt DateTime   @updatedAt
+}
+
+/// 미니게임 기록: 한 판당 1행. value=원래 기록(ms·레벨 등), score=0~100 환산 점수
+model GameScore {
+  id        String   @id @default(cuid())
+  groupId   String
+  userId    String
+  game      String
+  value     Float
+  score     Float
+  playedOn  String   // KST 날짜 YYYY-MM-DD
+  createdAt DateTime @default(now())
+  group     Group    @relation(fields: [groupId], references: [id])
+  user      User     @relation("GameScoreUser", fields: [userId], references: [id])
+
+  @@index([groupId, game, playedOn])
+  @@index([userId, playedOn])
+}
+
+/// 포인트 거래 원장: 게임 참가비·보상·벌점, 구성원 간 전달. 활동 포인트와 합산되며 잔액은 음수가 될 수 있음
+model PointLedger {
+  id            String   @id @default(cuid())
+  groupId       String
+  userId        String
+  amount        Int
+  kind          String   // GAME_FEE | GAME_REWARD | GAME_PENALTY | TRANSFER_IN | TRANSFER_OUT
+  refId         String   // 같은 일로 두 번 주고받지 않도록 하는 키 (게임 기록 id, 전달 id 등)
+  memo          String
+  counterpartId String?
+  createdAt     DateTime @default(now())
+  group         Group    @relation(fields: [groupId], references: [id])
+  user          User     @relation("PointLedgerUser", fields: [userId], references: [id])
+
+  @@unique([groupId, userId, kind, refId])
+  @@index([groupId, userId, createdAt])
+}
+
+/// 팀 사진 빙고판 (팀·주 단위)
+model BingoBoard {
+  id          String      @id @default(cuid())
+  groupId     String
+  teamId      String
+  week        String      // 주 시작일(월) YYYY-MM-DD
+  missions    Json        // string[size*size]
+  size        Int         @default(3)
+  createdAt   DateTime    @default(now())
+  group       Group       @relation(fields: [groupId], references: [id])
+  cells       BingoCell[]
+
+  @@unique([teamId, week])
+}
+
+/// 빙고 칸 인증 사진 (칸마다 1장)
+model BingoCell {
+  id        String     @id @default(cuid())
+  boardId   String
+  index     Int
+  userId    String
+  mediaUrl  String
+  mediaType String
+  caption   String?
+  createdAt DateTime   @default(now())
+  board     BingoBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, index])
+}
+
+/// 비동기 턴제 게임 (그림 전화·릴레이 소설·폭탄 돌리기·스무고개·지목 릴레이)
+model TurnGame {
+  id            String            @id @default(cuid())
+  groupId       String
+  teamId        String?
+  type          String
+  title         String
+  status        String            @default("RECRUITING") // RECRUITING | PLAYING | DONE | CANCELED
+  config        Json              // 게임별 설정과 비밀값(폭탄 남은 횟수, 스무고개 정답 등)
+  createdById   String
+  currentUserId String?
+  turnIndex     Int               @default(0)
+  turnDeadline  DateTime?
+  result        Json?
+  createdAt     DateTime          @default(now())
+  startedAt     DateTime?
+  endedAt       DateTime?
+  group         Group             @relation(fields: [groupId], references: [id])
+  participants  TurnParticipant[]
+  entries       TurnEntry[]
+
+  @@index([groupId, status])
+}
+
+model TurnParticipant {
+  id       String   @id @default(cuid())
+  gameId   String
+  userId   String
+  position Int      @default(0)
+  joinedAt DateTime @default(now())
+  game     TurnGame @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, userId])
+}
+
+/// 턴 기록: 글·그림·질문·답·추측·전달 등
+model TurnEntry {
+  id           String   @id @default(cuid())
+  gameId       String
+  userId       String
+  kind         String   // TEXT | DRAWING | QUESTION | GUESS | PASS | ANSWER
+  text         String?
+  mediaUrl     String?
+  reply        String?  // 스무고개 질문에 대한 출제자 답 (YES/NO/MAYBE)
+  targetUserId String?
+  correct      Boolean?
+  createdAt    DateTime @default(now())
+  game         TurnGame @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, createdAt])
+}
+
+/// 공통 업무 담당 (비품·간식 담당 등). 고정 담당 또는 순번
+model Duty {
+  id          String    @id @default(cuid())
+  groupId     String
+  teamId      String?
+  name        String
+  icon        String    @default("📌")
+  description String?
+  mode        String    @default("ROTATION") // FIXED | ROTATION
+  period      String    @default("WEEKLY") // DAILY | WEEKLY | BIWEEKLY | MONTHLY
+  memberIds   Json      // 담당자 목록(순번 순서). 고정이면 모두 담당
+  anchorDate  String    // 순번 기준일 (KST YYYY-MM-DD)
+  offset      Int       @default(0) // 건너뛰기 누적
+  active      Boolean   @default(true)
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  group       Group     @relation(fields: [groupId], references: [id])
+  logs        DutyLog[]
+
+  @@index([groupId, active])
+}
+
+/// 기간별 담당 기록: 대신 맡기·넘기기와 완료 체크
+model DutyLog {
+  id          String    @id @default(cuid())
+  dutyId      String
+  periodKey   String    // 기간 시작일
+  userId      String    // 그 기간 실제 담당자
+  originalId  String?   // 원래 차례였던 사람 (대신 맡은 경우)
+  status      String    @default("ASSIGNED") // ASSIGNED | DONE
+  memo        String?
+  doneAt      DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  duty        Duty      @relation(fields: [dutyId], references: [id], onDelete: Cascade)
+
+  @@unique([dutyId, periodKey])
+}
+
+/// 그룹 공지 (관리자). teamId 가 있으면 팀 공지
+model Notice {
+  id        String       @id @default(cuid())
+  groupId   String
+  teamId    String?
+  authorId  String
+  title     String
+  body      String
+  pinned    Boolean      @default(false)
+  important Boolean      @default(false)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  group     Group        @relation(fields: [groupId], references: [id])
+  reads     NoticeRead[]
+
+  @@index([groupId, createdAt])
+}
+
+model NoticeRead {
+  noticeId String
+  userId   String
+  readAt   DateTime @default(now())
+  notice   Notice   @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+
+  @@id([noticeId, userId])
+}
+
+/// 시스템 공지 (MASTER → 모든 사용자)
+model SystemNotice {
+  id        String    @id @default(cuid())
+  title     String
+  body      String
+  level     String    @default("INFO") // INFO | UPDATE | MAINTENANCE | URGENT
+  pinned    Boolean   @default(false)
+  banner    Boolean   @default(false) // user-web 상단 띠 배너
+  published Boolean   @default(true)
+  startsAt  DateTime?
+  endsAt    DateTime?
+  authorId  String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+/// 건의사항 (구성원 → 그룹 관리자)
+model Suggestion {
+  id           String           @id @default(cuid())
+  groupId      String
+  teamId       String?
+  authorId     String
+  anonymous    Boolean          @default(false)
+  category     String           @default("ETC")
+  title        String
+  body         String
+  status       String           @default("RECEIVED") // RECEIVED | REVIEWING | ACCEPTED | DONE | DECLINED
+  answer       String?
+  answeredById String?
+  answeredAt   DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  group        Group            @relation(fields: [groupId], references: [id])
+  votes        SuggestionVote[]
+
+  @@index([groupId, status])
+}
+
+model SuggestionVote {
+  suggestionId String
+  userId       String
+  createdAt    DateTime   @default(now())
+  suggestion   Suggestion @relation(fields: [suggestionId], references: [id], onDelete: Cascade)
+
+  @@id([suggestionId, userId])
+}
+
+/// 시스템 문의 (사용자 → MASTER)
+model Inquiry {
+  id        String         @id @default(cuid())
+  userId    String
+  groupId   String?
+  category  String         @default("ETC") // ACCOUNT | BUG | FEATURE | BILLING | ETC
+  title     String
+  body      String
+  status    String         @default("OPEN") // OPEN | ANSWERED | CLOSED
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  user      User           @relation("InquiryUser", fields: [userId], references: [id])
+  replies   InquiryReply[]
+
+  @@index([status, updatedAt])
+}
+
+model InquiryReply {
+  id         String   @id @default(cuid())
+  inquiryId  String
+  authorId   String
+  fromMaster Boolean  @default(false)
+  body       String
+  createdAt  DateTime @default(now())
+  inquiry    Inquiry  @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+}
+
+/// 약관 (MASTER 관리, 종류별 버전)
+model Terms {
+  id          String           @id @default(cuid())
+  type        String           // SERVICE | PRIVACY | MARKETING
+  version     Int
+  title       String
+  content     String
+  required    Boolean          @default(true)
+  status      String           @default("DRAFT") // DRAFT | PUBLISHED | ARCHIVED
+  effectiveAt DateTime?
+  publishedAt DateTime?
+  createdById String
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  agreements  TermsAgreement[]
+
+  @@unique([type, version])
+}
+
+model TermsAgreement {
+  id       String   @id @default(cuid())
+  termsId  String
+  userId   String
+  agreedAt DateTime @default(now())
+  terms    Terms    @relation(fields: [termsId], references: [id], onDelete: Cascade)
+
+  @@unique([termsId, userId])
+}
+
+/// 매일 한 번 답하는 팀 게임 (팀 텔레파시·밸런스 게임). 같은 날 같은 종류는 한 번만
+model DailyPick {
+  id        String   @id @default(cuid())
+  groupId   String
+  userId    String
+  teamId    String?
+  date      String   // KST YYYY-MM-DD
+  kind      String   // TELEPATHY | BALANCE
+  promptKey String
+  answer    String
+  createdAt DateTime @default(now())
+  group     Group    @relation(fields: [groupId], references: [id])
+
+  @@unique([groupId, userId, date, kind])
+  @@index([groupId, date, kind])
+}
+
+/// '이 물건의 주인은 누구?'용 내 물건 사진
+model GamePhoto {
+  id        String   @id @default(cuid())
+  groupId   String
+  userId    String
+  kind      String   @default("BELONGING")
+  mediaUrl  String
+  caption   String?
+  createdAt DateTime @default(now())
+  group     Group    @relation(fields: [groupId], references: [id])
+
+  @@index([groupId, kind])
+}
+
+/// TMI 퀴즈용 나에 대한 사실 한 줄
+model ProfileFact {
+  id        String   @id @default(cuid())
+  groupId   String
+  userId    String
+  text      String
+  createdAt DateTime @default(now())
+  group     Group    @relation(fields: [groupId], references: [id])
+
+  @@index([groupId])
 }

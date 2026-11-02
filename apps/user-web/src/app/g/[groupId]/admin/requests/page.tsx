@@ -7,8 +7,10 @@ import { api, errorMessage } from '@/lib/api';
 import { useGroup, useGroupId } from '@/lib/hooks';
 import type { JoinRequest, Paged } from '@/lib/types';
 import { Pager } from '@/components/pager';
+import { useDialog } from '@/components/confirm-dialog';
 
 export default function AdminRequestsPage() {
+  const { prompt } = useDialog();
   const groupId = useGroupId();
   const qc = useQueryClient();
   const { data: group } = useGroup();
@@ -84,8 +86,8 @@ export default function AdminRequestsPage() {
               </Button>
               <Button
                 variant="secondary"
-                onClick={() => {
-                  const reason = prompt('거절 사유를 입력하세요');
+                onClick={async () => {
+                  const reason = await prompt('거절 사유를 입력하세요');
                   if (reason?.trim()) review.mutate({ id: r.id, action: 'reject', reason: reason.trim() });
                 }}
                 disabled={review.isPending}

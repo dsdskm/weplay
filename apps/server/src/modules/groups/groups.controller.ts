@@ -18,6 +18,8 @@ import { AuthUser, CurrentGroupMembership, CurrentUser, GroupMembershipContext }
 import { PrismaService } from '../../common/prisma.service';
 import { ZodPipe } from '../../common/zod.pipe';
 import { RequestsService } from '../requests/requests.service';
+import { currentMonthKST, isPublished } from '../employee-of-the-month/employee-of-the-month.service';
+import { PointsBadgeService } from '../points-badge/points-badge.service';
 import { parseStatus } from '../admin/admin-requests.controller';
 
 const userSelect = { id: true, name: true, email: true, avatarUrl: true } as const;
@@ -43,6 +45,7 @@ export class GroupsController {
     private readonly requests: RequestsService,
     private readonly audit: AuditService,
     private readonly codes: JoinCodeService,
+    private readonly pointsBadges: PointsBadgeService,
   ) {}
 
   @Get()
@@ -145,11 +148,14 @@ export class GroupsController {
     if (!isTeamMember && !canManage) {
       return { team: { id: team.id, name: team.name, description: team.description }, members: [], locked: true, canManage: false };
     }
-    const members = await this.prisma.teamMember.findMany({
-      where: { teamId },
-      include: { user: { select: userSelect } },
-      orderBy: [{ role: 'asc' }, { joinedAt: 'asc' }],
-    });
+    const [members, profiles] = await Promise.all([
+      this.prisma.teamMember.findMany({
+        where: { teamId },
+        include: { user: { select: userSelect } },
+        orderBy: [{ role: 'asc' }, { joinedAt: 'asc' }],
+      }),
+      this.pointsBadges.profilesByUser(groupId),
+    ]);
     return {
       team: {
         id: team.id,
@@ -161,7 +167,7 @@ export class GroupsController {
         joinCodeEnabled: team.joinCodeEnabled,
         joinCode: canManage ? formatJoinCode(team.joinCode) : undefined,
       },
-      members: members.map((x) => ({ ...x.user, teamRole: x.role, joinedAt: x.joinedAt })),
+      members: members.map((x) => ({ ...x.user, teamRole: x.role, joinedAt: x.joinedAt, badges: profiles.get(x.user.id)?.badges ?? [] })),
       locked: false,
       canManage,
     };
@@ -194,10 +200,21 @@ export class GroupsController {
       }),
       this.prisma.groupMembership.count({ where }),
     ]);
+    // 이번 달 공개된 이달의 사원: 구성원 목록에 🏅 표시 (달이 바뀌기 전까지)
+    const month = currentMonthKST();
+    const [setting, thisMonth] = await Promise.all([
+      this.prisma.employeeOfTheMonthSetting.findUnique({ where: { groupId } }),
+      this.prisma.employeeOfTheMonth.findMany({ where: { groupId, month }, select: { userId: true } }),
+    ]);
+    const mvpIds = isPublished(month, setting?.publishDay ?? 1) ? new Set(thisMonth.map((w) => w.userId)) : new Set<string>();
+    const profiles = await this.pointsBadges.profilesByUser(groupId);
     const items = members.map(({ user: { teamMembers, ...u }, ...m }) => ({
       ...u,
       role: m.role,
       isPrimaryAdmin: group.primaryAdminId === u.id,
+      isMvpThisMonth: mvpIds.has(u.id),
+      points: profiles.get(u.id)?.points ?? null,
+      badges: profiles.get(u.id)?.badges ?? [],
       joinedAt: m.joinedAt,
       teams: teamMembers.map((g) => g.team),
     }));

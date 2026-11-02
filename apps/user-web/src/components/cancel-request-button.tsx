@@ -2,9 +2,11 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, errorMessage } from '@/lib/api';
+import { useDialog } from '@/components/confirm-dialog';
 
 /** 승인 대기 가입 요청 취소. 카드 링크 안에 있어도 이동하지 않도록 기본 동작을 막는다 */
 export function CancelRequestButton({ requestId }: { requestId: string }) {
+  const { confirm, alert } = useDialog();
   const qc = useQueryClient();
   const cancel = useMutation({
     mutationFn: () => api(`/me/requests/${requestId}`, { method: 'DELETE' }),
@@ -12,16 +14,16 @@ export function CancelRequestButton({ requestId }: { requestId: string }) {
       qc.invalidateQueries({ queryKey: ['group'] });
       qc.invalidateQueries({ queryKey: ['me'] });
     },
-    onError: (e) => alert(errorMessage(e)),
+    onError: (e) => void alert(errorMessage(e)),
   });
   return (
     <button
       type="button"
       disabled={cancel.isPending}
-      onClick={(e) => {
+      onClick={async (e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (confirm('가입 요청을 취소할까요?')) cancel.mutate();
+        if (await confirm({ message: '가입 요청을 취소할까요?', danger: true })) cancel.mutate();
       }}
       className="text-xs font-semibold text-rose-600 hover:underline disabled:opacity-50"
     >

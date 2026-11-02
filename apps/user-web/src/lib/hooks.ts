@@ -42,3 +42,14 @@ export function useGroup() {
   const groupId = useGroupId();
   return useQuery({ queryKey: ['group', groupId], queryFn: () => api<GroupHome>(`/groups/${groupId}`) });
 }
+
+/** 그룹에서 사용 중(승인된)인 기능 목록. 메뉴 노출에 사용 */
+export function useFeatureFlags(groupId: string, enabled = true) {
+  const { data } = useQuery({
+    queryKey: ['group', groupId, 'feature-flags'],
+    queryFn: () => api<{ key: string; status: string | null; active?: boolean }[]>(`/groups/${groupId}/features`),
+    enabled: enabled && !!tokenStore.get(),
+  });
+  const on = new Set((data ?? []).filter((f) => f.status === 'APPROVED' && f.active !== false).map((f) => f.key));
+  return { isOn: (key: string) => on.has(key), loaded: !!data };
+}

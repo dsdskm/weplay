@@ -8,11 +8,13 @@ import { api, errorMessage } from '@/lib/api';
 import type { JoinResult, LookupResult } from '@/lib/types';
 import { CodeInput } from './code-input';
 import { Badge, Button, Card, ErrorText, Input } from './ui';
+import { useDialog } from '@/components/confirm-dialog';
 
 const MANUAL = '__manual__';
 
 /** 그룹 코드 → 공개 팀 드롭다운 선택 (마지막: 직접 입력) → 가입 요청 */
 export function JoinForm({ onDone, teamOnly }: { onDone: (r: JoinResult) => void; teamOnly?: boolean }) {
+  const { confirm } = useDialog();
   const [code, setCode] = useState('');
   const [teamCode, setTeamCode] = useState('');
   const [manual, setManual] = useState(false);
@@ -127,7 +129,8 @@ export function JoinForm({ onDone, teamOnly }: { onDone: (r: JoinResult) => void
                 ) : (
                 <button
                   className="text-xs text-slate-400 hover:text-rose-600"
-                  onClick={() => {
+                  onClick={async () => {
+                    if (!(await confirm({ message: '목록에서 삭제할까요?', danger: true }))) return;
                     setItems((p) => p.filter((x) => x.code !== i.code));
                     if (i.kind === 'GROUP') setPicked([]);
                   }}

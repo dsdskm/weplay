@@ -1,0 +1,131 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-brand-50: #f5f3ff;
+  --color-brand-100: #ede9fe;
+  --color-brand-500: #8b5cf6;
+  --color-brand-600: #7c3aed;
+  --color-brand-700: #6d28d9;
+  --color-accent-400: #fbbf24;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+/* ── 미니게임 애니메이션 ── */
+@keyframes wp-pop-in {
+  0% { opacity: 0; transform: translateY(14px) scale(0.94); }
+  60% { opacity: 1; transform: translateY(-3px) scale(1.02); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes wp-float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-8px) rotate(-4deg); }
+}
+@keyframes wp-gradient-pan {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes wp-shine {
+  0% { transform: translateX(-120%) skewX(-20deg); }
+  100% { transform: translateX(220%) skewX(-20deg); }
+}
+@keyframes wp-confetti {
+  0% { transform: translate3d(0, -10vh, 0) rotate(0deg); opacity: 1; }
+  100% { transform: translate3d(var(--wp-dx, 0), 105vh, 0) rotate(var(--wp-rot, 720deg)); opacity: 0.9; }
+}
+@keyframes wp-ring {
+  0% { transform: scale(0.6); opacity: 0.7; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+@keyframes wp-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-5px); }
+  80% { transform: translateX(5px); }
+}
+@keyframes wp-tap {
+  0% { transform: scale(1); }
+  40% { transform: scale(0.86); }
+  100% { transform: scale(1); }
+}
+@keyframes wp-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(139 92 246 / 0.0); }
+  50% { box-shadow: 0 0 0 10px rgb(139 92 246 / 0.18); }
+}
+@keyframes wp-bar {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes wp-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes wp-spin-slow {
+  to { transform: rotate(360deg); }
+}
+@keyframes wp-zoom-out {
+  0% { opacity: 0; transform: scale(1.8); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.wp-pop-in { animation: wp-pop-in 0.55s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+.wp-float { animation: wp-float 3.2s ease-in-out infinite; }
+.wp-gradient { background-size: 200% 200%; animation: wp-gradient-pan 8s ease infinite; }
+.wp-shine { position: relative; overflow: hidden; }
+.wp-shine::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.35), transparent);
+  animation: wp-shine 3.5s ease-in-out infinite;
+}
+.wp-ring { animation: wp-ring 1.4s ease-out infinite; }
+.wp-shake { animation: wp-shake 0.4s ease-in-out; }
+.wp-tap { animation: wp-tap 0.25s ease-out; }
+.wp-glow { animation: wp-glow 2s ease-in-out infinite; }
+.wp-bar { transform-origin: left; animation: wp-bar 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.wp-fade { animation: wp-fade 0.4s ease both; }
+.wp-spin-slow { animation: wp-spin-slow 12s linear infinite; }
+.wp-zoom-out { animation: wp-zoom-out 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .wp-pop-in, .wp-float, .wp-gradient, .wp-shine::after, .wp-ring, .wp-shake, .wp-tap, .wp-glow, .wp-bar, .wp-spin-slow, .wp-zoom-out { animation: none; }
+}
+
+/* 모달 시트 (모바일은 아래에서 위로) */
+@keyframes wp-sheet-up {
+  from { transform: translateY(40px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.wp-sheet { animation: wp-sheet-up 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.05) both; }
+
+/* 블록 쌓기: 잘린 조각이 떨어짐 */
+@keyframes wp-fall {
+  to { transform: translateY(260px) rotate(25deg); opacity: 0; }
+}
+/* 카드 뒤집기 */
+@keyframes wp-flip-in {
+  0% { transform: rotateY(90deg) scale(0.9); }
+  100% { transform: rotateY(0) scale(1); }
+}
+.wp-flip-in { animation: wp-flip-in 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+
+/* 보스 피해 숫자 */
+@keyframes wp-dmg {
+  0% { transform: translate(-50%, 0) scale(0.6); opacity: 0; }
+  20% { transform: translate(-50%, -10px) scale(1.3); opacity: 1; }
+  100% { transform: translate(-50%, -70px) scale(1); opacity: 0; }
+}
+.wp-dmg { animation: wp-dmg 0.9s ease-out forwards; }
+
+/* 홍보 페이지: 스크롤 등장 + 배경 둥실 */
+@keyframes wp-blob {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(30px, -20px) scale(1.08); }
+}
+.wp-blob { animation: wp-blob 12s ease-in-out infinite; }

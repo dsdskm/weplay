@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "FeatureKey" ADD VALUE 'POINTS_BADGE';

@@ -13,7 +13,11 @@
     "db:generate": "pnpm --filter @weplay/db generate",
     "db:migrate": "pnpm --filter @weplay/db migrate",
     "db:seed": "pnpm --filter @weplay/db seed",
-    "db:deploy": "pnpm --filter @weplay/db migrate:deploy"
+    "db:deploy": "pnpm --filter @weplay/db migrate:deploy",
+    "test": "bash scripts/test/all.sh",
+    "test:db": "bash scripts/test/all.sh --db",
+    "test:unit": "pnpm --filter @weplay/shared test",
+    "test:api": "node scripts/test/api-smoke.mjs"
   },
   "devDependencies": {
     "turbo": "^2.5.0",

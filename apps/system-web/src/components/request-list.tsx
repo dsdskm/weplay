@@ -7,10 +7,12 @@ import type { JoinRequest } from '@/lib/types';
 import { Badge, Button, Card, Empty, ErrorText } from './ui';
 import { Pager } from './pager';
 import type { Paged } from '@/lib/types';
+import { useDialog } from '@/components/confirm-dialog';
 
 const tone = { PENDING: 'amber', APPROVED: 'green', REJECTED: 'rose', CANCELED: 'slate', EXPIRED: 'slate' } as const;
 
 export function RequestList({ groupId, status = 'PENDING' }: { groupId?: string; status?: string }) {
+  const { prompt } = useDialog();
   const qc = useQueryClient();
   const [error, setError] = useState<string>();
   const [page, setPage] = useState(1);
@@ -71,8 +73,8 @@ export function RequestList({ groupId, status = 'PENDING' }: { groupId?: string;
               </Button>
               <Button
                 variant="danger"
-                onClick={() => {
-                  const reason = prompt('거절 사유를 입력하세요');
+                onClick={async () => {
+                  const reason = await prompt({ message: '거절 사유를 입력하세요', required: true });
                   if (reason?.trim()) review.mutate({ id: r.id, action: 'reject', body: { reason: reason.trim() } });
                 }}
                 disabled={review.isPending}

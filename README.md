@@ -1,62 +1,77 @@
 # WePlay
 
-## 계정 유형 (Account Type)
+조직문화 플랫폼. 그룹·팀 단위로 칭찬, 게임, 공지 같은 활동을 합니다.
 
-| 계정 유형 | 저장 위치 | 설명 |
+## 구성
+
+| 앱 | 포트 | 용도 |
 | --- | --- | --- |
-| `MASTER` | `User.platformRole` | 시스템 관리자. 모든 그룹/팀 수정 |
-| `ADMIN` | `GroupMembership.role` / `TeamMember.role` | 아래 둘 중 하나 이상. 목록에서는 자동 표시 |
-| ↳ `GROUP_ADMIN` | `GroupMembership.role = ADMIN` | 그룹 정보 관리. 여러 명 가능, 대표 1명 필수 |
-| ↳ `TEAM_ADMIN` | `TeamMember.role = ADMIN` | 팀 정보 관리. 여러 명 가능, 대표 1명 필수 |
-| `USER` | `User.platformRole = USER` | 일반 구성원. 그룹/팀 소속은 선택 |
+| `apps/server` | 4000 | NestJS API (`/api/v1`) |
+| `apps/user-web` | 3000 | 구성원·관리자 화면 |
+| `apps/system-web` | 3001 | MASTER 콘솔 |
+| `apps/official-web` | 3002 | 공개 홍보 사이트 |
+| `packages/db` | - | Prisma 스키마·마이그레이션 (PostgreSQL) |
+| `packages/shared` | - | 공통 타입·규칙·게임 정의 |
 
-- 계정은 그룹 1개, 팀 1개까지만 소속 가능
-- 팀은 그룹에 속해야 함 (그룹 없이 팀만 있을 수 없음). GROUP_ADMIN은 팀 소속이 선택
-- 대표는 강등·제외·삭제 전에 먼저 바꿔야 함. 대표 계정을 삭제하면 남은 ADMIN 중 가장 먼저 지정된 사람이 자동 대표가 됨
+## 준비
 
-## 화면과 권한
+- Node.js 22 이상, pnpm, Docker
+- DB 컨테이너: `scripts/db-start.sh` (컨테이너 `weplay-db`, 사용자 `kkh`, DB `weplay`, 포트 5432)
 
-| 기능 | MASTER (system-web) | GROUP_ADMIN (user-web) | TEAM_ADMIN (user-web) | USER (user-web) |
-| --- | --- | --- | --- | --- |
-| 그룹 생성·코드·삭제 | ✅ | ❌ | ❌ | ❌ |
-| 그룹 이름·소개 수정 | ✅ | ✅ | ❌ | ❌ |
-| 팀 생성·삭제 | ✅ | ✅ 그룹 전체 | ❌ | ❌ |
-| 팀 이름·소개 수정 | ✅ | ✅ 전체 팀 | ✅ 담당 팀 | ❌ |
-| 계정 생성·수정·삭제·상태 | ✅ | ❌ | ❌ | ❌ |
-| 계정 소속(그룹/팀) 일괄 지정 | ✅ | ❌ | ❌ | ❌ |
-| 감사 로그 조회 | ✅ | ❌ | ❌ | ❌ |
-| 가입 요청 승인/거절 | ✅ (상세) | ✅ 그룹 전체 | ✅ 담당 팀 요청 | ❌ |
-| 팀 설정 (공개, 승인 방식, 코드 사용, 재발급) | ✅ | ✅ 전체 팀 | ✅ 담당 팀 | ❌ |
-| 팀 구성원 역할 (팀 ADMIN 지정) | ✅ | ✅ 전체 팀 | ✅ 담당 팀 | ❌ |
-| 팀 구성원 목록 보기 | ✅ | ✅ | ✅ | 팀 구성원만 |
-| 팀 가입 코드 입력 | — | ✅ | ✅ | ✅ (승인 대기·거절 사유 표시, 요청 취소) |
+## 실행
 
-- user-web 관리 메뉴(가입 요청, 팀 관리)는 그룹 ADMIN 또는 담당 팀이 있는 TEAM_ADMIN에게만 보임
-- MASTER는 그룹 구성원이 아니므로 user-web의 그룹 화면을 쓰지 않고 system-web에서 관리
-- 대표 GROUP_ADMIN/TEAM_ADMIN이 없으면 system-web 목록과 상세에 "대표 미지정" 배지가 표시됨
-- 테스트: `packages/shared`에서 `pnpm test`, API 서버 실행 후 `node scripts/test-rules.mjs` (권한/소속 규칙 점검, 임시 데이터는 자동 정리)
+```bash
+pnpm install
+cp .env.example .env            # 값 채우기
+bash scripts/db-start.sh        # DB 기동
+pnpm dev                        # 마이그레이션 후 전체 앱 실행
+```
 
-## 가입 흐름
+## 환경 변수 (주요)
 
-- 팀 코드 입력 → 상태 표시: 가입됨 / 승인 대기 중 / 거절됨(사유) / 없음
-- 승인 대기 중인 요청은 팀 목록과 승인 대기 화면에서 "요청 취소" 가능
-- 요청이 승인되기 전에는 팀 구성원 목록을 볼 수 없음 (팀 ADMIN, 그룹 ADMIN 제외)
-- 거절 시 사유 필수. 거절된 팀은 "거절됨: 사유"로 표시되고 다시 요청할 수 있음
+| 키 | 설명 |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL 연결 문자열 |
+| `JWT_SECRET`, `JWT_TTL` | 토큰 서명·만료 |
+| `CORS_ORIGINS` | 허용 출처(쉼표 구분). 3000·3001·3002 포함 |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google 로그인 |
+| `AUTH_DEV_LOGIN` | 개발용 로그인. **운영에서는 false** |
+| `SEED_MASTER_USERNAME`, `SEED_MASTER_PASSWORD` | 초기 MASTER 계정 |
+| `UPLOAD_DIR`, `MAX_UPLOAD_MB` | 사진·영상 저장 폴더와 최대 크기 |
+| `NAVER_SEARCH_CLIENT_ID`, `NAVER_SEARCH_CLIENT_SECRET` | 회식 장소 검색 |
+| `ANTHROPIC_API_KEY`, `AI_TEXT_MODEL` | AI 텍스트 판정·퀴즈. 없으면 기본 문제 사용 |
+| `IMAGE_API_URL`, `IMAGE_API_KEY`, `IMAGE_MODEL` | AI 이미지 생성·판정(OpenAI 호환). 없으면 비활성 |
+| `NEXT_PUBLIC_API_URL` | 웹 앱이 호출할 API 주소 |
+| `NEXT_PUBLIC_NAVER_MAP_CLIENT_ID` | 네이버 지도 |
+| `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_AD_SLOT_ENABLED` | official-web 링크와 광고 슬롯 표시 |
 
-## 상태 (Status)
+## 데이터
 
-| 구분 | 값 | 위치 |
-| --- | --- | --- |
-| 계정 | `ACTIVE`, `DEACTIVATED` | `User.status` (정지와 비활성은 `DEACTIVATED`로 통합, 로그인 후 안내 화면만 표시) |
-| 그룹 소속 | `APPROVED`, `LEFT`, `REMOVED`, `BLOCKED` | `GroupMembership.status` |
-| 그룹 | `ACTIVE`, `SUSPENDED` | `Group.status` |
-| 가입 요청 | `PENDING`, `APPROVED`, `REJECTED`, `CANCELED`, `EXPIRED` | `GroupMembershipRequest.status` |
+- 백업: `bash scripts/db-backup.sh` → `scripts/db/<이름>.sql` (업로드 파일이 있으면 `.uploads.tar.gz`도 함께)
+- 복원: `bash scripts/db-restore.sh <백업 이름>` (확장자 생략 가능, 인자가 없으면 가장 최근 백업)
+- 그룹·계정 삭제: `scripts/group-team/delete.sh`, `scripts/account/delete.sh` (관련 테이블을 순서대로 지웁니다)
+- 샘플 데이터: `scripts/feature/generate.sh`, 기능별 `scripts/feature/<기능>/generate-contents.sh`
 
-## 코드 재발급 시 초기화
+## 테스트
 
-- 그룹 코드 재발급: 그룹의 모든 계정에서 그룹/팀 소속과 대표 지정을 초기화
-- 팀 코드 재발급: 팀의 모든 계정에서 팀 소속과 팀 대표 지정을 초기화 (그룹 소속은 유지)
+```bash
+pnpm test          # 전체 (단위 + API 스모크)
+pnpm test:unit     # 공통 규칙 단위 테스트
+pnpm test:api      # API 스모크 (서버 실행 필요)
+pnpm test:db       # DB 백업·복원 포함
+node scripts/test-rules.mjs   # 그룹·팀 권한 규칙
+```
 
-## 미구현
+## 빌드·점검
 
-- 비밀번호 찾기: `POST /auth/password-reset`은 빈 구현 (메일 발송 서비스 연결 후 구현)
+```bash
+pnpm typecheck
+pnpm build
+```
+
+## 참고 문서
+
+- [기능 목록](docs/FEATURE.md)
+- [할 일](docs/TODO.md)
+- [권한 규칙](docs/ROLES.md)
+- [게임 설계](docs/GAME.md)

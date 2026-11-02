@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Button, Card, ErrorText, Input } from '@/components/ui';
 import { api, errorMessage, tokenStore } from '@/lib/api';
+import { useDialog } from '@/components/confirm-dialog';
 
 interface Me {
   id: string;
@@ -16,6 +17,7 @@ interface Me {
 }
 
 export default function AccountPage() {
+  const { confirm } = useDialog();
   const router = useRouter();
   const qc = useQueryClient();
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/me') });
@@ -107,7 +109,7 @@ export default function AccountPage() {
           <Button
             variant="danger"
             onClick={async () => {
-              if (!confirm('계정을 비활성화할까요?')) return;
+              if (!(await confirm({ message: '계정을 비활성화할까요?', danger: true }))) return;
               const ok = await run(() => api('/auth/deactivate', { body: { password: deactivatePassword || undefined } }), '계정을 비활성화했습니다');
               if (!ok) return;
               tokenStore.clear();

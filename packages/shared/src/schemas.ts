@@ -1,3 +1,4 @@
+import { BADGES, POINT_RULES } from './points';
 import { z } from 'zod';
 
 export const googleLoginSchema = z.object({ credential: z.string().min(10) });
@@ -134,3 +135,108 @@ export type SetMemberRoleInput = z.infer<typeof setMemberRoleSchema>;
 
 export const passwordResetRequestSchema = z.object({ email: emailSchema });
 export type PasswordResetRequestInput = z.infer<typeof passwordResetRequestSchema>;
+
+export const nominateEmployeeOfTheMonthSchema = z.object({
+  nomineeId: z.string().min(1),
+  reason: z.string().trim().min(1, '추천 사유를 입력하세요').max(300),
+});
+export type NominateEmployeeOfTheMonthInput = z.infer<typeof nominateEmployeeOfTheMonthSchema>;
+
+export const setEmployeeOfTheMonthWinnersSchema = z.object({
+  winners: z
+    .array(
+      z.object({
+        userId: z.string().min(1),
+        note: z.string().trim().max(300).nullable().optional(),
+      }),
+    )
+    .max(5),
+});
+export type SetEmployeeOfTheMonthWinnersInput = z.infer<typeof setEmployeeOfTheMonthWinnersSchema>;
+
+export const updateEmployeeOfTheMonthSettingSchema = z
+  .object({
+    publishDay: z.number().int().min(1).max(28).optional(),
+    winnerCount: z.number().int().min(1).max(5).optional(),
+  })
+  .refine((v) => v.publishDay !== undefined || v.winnerCount !== undefined, '설정 값을 입력하세요');
+export type UpdateEmployeeOfTheMonthSettingInput = z.infer<typeof updateEmployeeOfTheMonthSettingSchema>;
+
+export const createEmployeeOfTheMonthCommentSchema = z.object({
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+  targetUserId: z.string().min(1),
+  body: z.string().trim().min(1, '댓글을 입력하세요').max(300),
+});
+export type CreateEmployeeOfTheMonthCommentInput = z.infer<typeof createEmployeeOfTheMonthCommentSchema>;
+
+export const createComplimentCardSchema = z.object({
+  receiverId: z.string().min(1),
+  body: z.string().trim().min(1, '칭찬 내용을 입력하세요').max(300),
+  anonymous: z.boolean().default(false),
+});
+export type CreateComplimentCardInput = z.infer<typeof createComplimentCardSchema>;
+
+export const updateComplimentSettingSchema = z.object({
+  dailyLimit: z.number().int().min(1).max(20),
+});
+export type UpdateComplimentSettingInput = z.infer<typeof updateComplimentSettingSchema>;
+
+export const updateEmployeeOfTheMonthCommentSchema = z.object({
+  body: z.string().trim().min(1, '댓글을 입력하세요').max(300),
+});
+export type UpdateEmployeeOfTheMonthCommentInput = z.infer<typeof updateEmployeeOfTheMonthCommentSchema>;
+
+export const updateComplimentCardSchema = z.object({
+  body: z.string().trim().min(1, '칭찬 내용을 입력하세요').max(300),
+});
+export type UpdateComplimentCardInput = z.infer<typeof updateComplimentCardSchema>;
+
+export const setComplimentCardHiddenSchema = z.object({ hidden: z.boolean() });
+export type SetComplimentCardHiddenInput = z.infer<typeof setComplimentCardHiddenSchema>;
+
+/** 칭찬 반응 이모지 (고정 목록) */
+export const COMPLIMENT_REACTIONS = ['👏', '❤️', '🎉', '😊'] as const;
+export const setComplimentReactionSchema = z.object({ emoji: z.enum(COMPLIMENT_REACTIONS) });
+export type SetComplimentReactionInput = z.infer<typeof setComplimentReactionSchema>;
+
+/** 포인트 설정: 활동별 점수와 배지 목표·사용 여부 */
+const pointRuleInt = z.number().int().min(0).max(100);
+export const updatePointConfigSchema = z.object({
+  rules: z.object(Object.fromEntries(Object.keys(POINT_RULES).map((k) => [k, pointRuleInt])) as Record<keyof typeof POINT_RULES, typeof pointRuleInt>),
+  badges: z.array(
+    z.object({
+      key: z.enum(BADGES.map((b) => b.key) as [string, ...string[]]),
+      target: z.number().int().min(1).max(1000),
+      enabled: z.boolean(),
+    }),
+  ),
+});
+export type UpdatePointConfigInput = z.infer<typeof updatePointConfigSchema>;
+
+/** 관리자 수동 포인트 부여(+)·차감(-) */
+export const createPointAdjustmentSchema = z.object({
+  userId: z.string().min(1),
+  amount: z.number().int().min(-10000).max(10000).refine((v) => v !== 0, '0점은 부여할 수 없어요'),
+  reason: z.string().trim().min(1, '사유를 입력하세요').max(200),
+});
+export type CreatePointAdjustmentInput = z.infer<typeof createPointAdjustmentSchema>;
+
+/** 마니또 회차 시작·기간 설정 (날짜는 ISO 문자열, endAt 없으면 수동 종료까지) */
+export const startManittoSchema = z.object({
+  startAt: z.string().datetime().optional(),
+  endAt: z.string().datetime().nullable().optional(),
+  /** 참가자 목록. 없으면 활성 구성원 전체 */
+  participantIds: z.array(z.string().min(1)).max(500).optional(),
+});
+export type StartManittoInput = z.infer<typeof startManittoSchema>;
+
+export const manittoPeriodSchema = z.object({
+  startAt: z.string().datetime().optional(),
+  endAt: z.string().datetime().nullable().optional(),
+});
+export type ManittoPeriodInput = z.infer<typeof manittoPeriodSchema>;
+
+export const manittoMessageSchema = z.object({
+  body: z.string().trim().min(1, '메시지를 입력하세요').max(500),
+});
+export type ManittoMessageInput = z.infer<typeof manittoMessageSchema>;

@@ -7,6 +7,7 @@ import { SortTh, useSort } from '@/components/sort';
 import { Badge, Button, Card, cn, Empty, ErrorText, Input } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import type { AdminTeam, AdminUser, AdminUserDetail, GroupRow, Paged } from '@/lib/types';
+import { useDialog } from '@/components/confirm-dialog';
 
 const PAGE_SIZES = [10, 20, 50, 100];
 const PAGE_SIZE_KEY = 'accounts.pageSize';
@@ -20,6 +21,7 @@ type BulkAction =
   | { type: 'delete' };
 
 export function AccountsPanel({ role }: { role: 'USER' | 'MASTER' }) {
+  const { confirm } = useDialog();
   const qc = useQueryClient();
   const [filter, setFilter] = useState<Filter>({ q: '', status: '', adminScope: '', groupId: '', teamId: '' });
   const [page, setPage] = useState(1);
@@ -100,8 +102,8 @@ export function AccountsPanel({ role }: { role: 'USER' | 'MASTER' }) {
   const allOnPage = pageIds.length > 0 && pageIds.every((id) => selected.has(id));
   const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / pageSize));
 
-  const applyStatus = (status: Status) => {
-    if (status !== 'ACTIVE' && !confirm(`${selected.size}명의 상태를 ${status}로 변경할까요?`)) return;
+  const applyStatus = async (status: Status) => {
+    if (status !== 'ACTIVE' && !(await confirm({ message: `${selected.size}명의 상태를 ${status}로 변경할까요?`, danger: status === 'DEACTIVATED' }))) return;
     bulk.mutate({ type: 'status', status });
   };
 
@@ -194,7 +196,9 @@ export function AccountsPanel({ role }: { role: 'USER' | 'MASTER' }) {
           <Button
             variant="danger"
             disabled={bulk.isPending}
-            onClick={() => confirm(`${selected.size}명을 삭제할까요? 되돌릴 수 없습니다.`) && bulk.mutate({ type: 'delete' })}
+            onClick={async () => {
+              if (await confirm({ message: `${selected.size}명을 삭제할까요? 되돌릴 수 없습니다.`, danger: true })) bulk.mutate({ type: 'delete' });
+            }}
           >
             삭제
           </Button>

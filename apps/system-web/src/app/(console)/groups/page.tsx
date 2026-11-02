@@ -10,10 +10,12 @@ import { SortTh, sortRows, useSort } from '@/components/sort';
 import { Badge, Button, Card, Empty, ErrorText, Input } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import type { GroupRow } from '@/lib/types';
+import { useDialog } from '@/components/confirm-dialog';
 
 type Tab = 'groups' | 'accounts' | 'master' | 'logs';
 
 export default function GroupsPage() {
+  const { confirm } = useDialog();
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>('groups');
   const [name, setName] = useState('');
@@ -129,7 +131,9 @@ export default function GroupsPage() {
                     <Button
                       variant="ghost"
                       className="text-rose-600"
-                      onClick={() => confirm(`${c.name}을(를) 삭제할까요?`) && remove.mutate(c.id)}
+                      onClick={async () => {
+                        if (await confirm({ message: `${c.name}을(를) 삭제할까요? 되돌릴 수 없습니다.`, danger: true })) remove.mutate(c.id);
+                      }}
                       disabled={remove.isPending}
                     >
                       삭제

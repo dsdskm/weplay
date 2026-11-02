@@ -7,3 +7,5 @@ dist
 .env.example
 *.tsbuildinfo
 next-env.d.ts
+apps/server/uploads
+.claude/settings.local.json

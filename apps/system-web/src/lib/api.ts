@@ -38,3 +38,26 @@ export async function api<T = any>(path: string, init: { method?: string; body?:
 export function errorMessage(e: unknown) {
   return e instanceof Error ? e.message : '알 수 없는 오류';
 }
+
+/** MASTER 업로드 (기능 소개 이미지 등). 사진만 허용 */
+export async function uploadAdminImage(file: File) {
+  const token = tokenStore.get();
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${API_URL}/admin/uploads`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: form });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data?.error?.code ?? 'UNKNOWN', data?.error?.message ?? '업로드에 실패했습니다');
+  return data as { url: string; mediaType: 'IMAGE' | 'VIDEO' };
+}
+
+/** 업로드 주소를 화면에 보여 줄 전체 주소로 */
+export const assetUrl = (url: string) => (url.startsWith('http') ? url : `${API_URL.replace(/\/api\/v1\/?$/, '')}${url}`);
+
+/** datetime-local 입력값 ↔ ISO 문자열 (로컬 시간 기준) */
+export const toLocalInput = (iso: string | null | undefined) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+export const fromLocalInput = (v: string) => (v ? new Date(v).toISOString() : null);

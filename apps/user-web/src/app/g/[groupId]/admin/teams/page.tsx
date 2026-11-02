@@ -73,7 +73,7 @@ export default function AdminTeamsPage() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {pg.items.map((t) => (
-            <Link key={t.id} href={`/g/${groupId}/teams/${t.id}`}>
+            <Link key={t.id} href={`/g/${groupId}/admin/teams/${t.id}`}>
               <Card className="h-full space-y-2 transition hover:ring-brand-200">
                 <div className="flex items-center justify-between">
                   <p className="font-semibold">{t.name}</p>
