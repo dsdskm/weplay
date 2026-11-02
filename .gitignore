@@ -9,4 +9,3 @@ dist
 next-env.d.ts
 apps/server/uploads
 .claude/settings.local.json
-env.zip
