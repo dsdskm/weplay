@@ -41,6 +41,10 @@ pnpm dev                        # 마이그레이션 후 전체 앱 실행
 | `NAVER_SEARCH_CLIENT_ID`, `NAVER_SEARCH_CLIENT_SECRET` | 회식 장소 검색 |
 | `ANTHROPIC_API_KEY`, `AI_TEXT_MODEL` | AI 텍스트 판정·퀴즈. 없으면 기본 문제 사용 |
 | `IMAGE_API_URL`, `IMAGE_API_KEY`, `IMAGE_MODEL` | AI 이미지 생성·판정(OpenAI 호환). 없으면 비활성 |
+| `MAIL_DRIVER` | `gmail` 또는 `noop`(기본값, 발송 없이 로그만 남김) |
+| `MAIL_USER`, `MAIL_PASSWORD` | Gmail 계정과 앱 비밀번호 (2단계 인증 필요). 일반 로그인 비밀번호는 사용 불가 |
+| `MAIL_FROM` | 발신 표시 주소. 보통 `MAIL_USER`와 같게 둠 (Gmail은 다른 주소로 보내면 거부될 수 있음) |
+| `APP_URL` | 재설정 링크의 웹 주소 (없으면 `NEXT_PUBLIC_APP_URL`, 그다음 `http://localhost:3000`) |
 | `NEXT_PUBLIC_API_URL` | 웹 앱이 호출할 API 주소 |
 | `NEXT_PUBLIC_NAVER_MAP_CLIENT_ID` | 네이버 지도 |
 | `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_AD_SLOT_ENABLED` | official-web 링크와 광고 슬롯 표시 |

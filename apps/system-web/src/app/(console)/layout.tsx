@@ -16,6 +16,7 @@ const nav = [
   { href: '/terms', label: '약관 관리' },
   { href: '/storage', label: '스토리지 할당' },
   { href: '/points', label: '포인트 기본값' },
+  { href: '/api-test', label: 'API 테스트' },
   { href: '/settings', label: '내 설정' },
 ];
 

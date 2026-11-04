@@ -105,6 +105,21 @@ model User {
   boardComments BoardComment[] @relation("BoardCommentAuthor")
 }
 
+/// 이메일 인증번호 (SIGNUP: 회원가입, CHANGE_EMAIL: 회원 정보의 이메일 변경). 코드는 해시로 저장
+model EmailVerification {
+  id         String    @id @default(cuid())
+  email      String
+  purpose    String // SIGNUP | CHANGE_EMAIL
+  userId     String? // CHANGE_EMAIL 을 요청한 사용자
+  codeHash   String
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  sentAt     DateTime
+  consumedAt DateTime?
+
+  @@unique([email, purpose])
+}
+
 model Group {
   /// 그룹별 파일 저장 용량 할당 (MB). MASTER가 설정 (집계는 준비 중)
   storageQuotaMb Int @default(1024)

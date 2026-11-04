@@ -9,11 +9,13 @@ import {
   ErrorCode,
   LocalLoginInput,
   MasterLoginInput,
-  SignupInput,
+  PasswordResetConfirmInput,
+  SignupWithCodeInput,
 } from '@weplay/shared';
 import { AppError } from '../../common/app-error';
 import { AuditService } from '../../common/audit.service';
 import { PrismaService } from '../../common/prisma.service';
+import { EmailVerificationService } from '../../common/email-verification.service';
 
 export function toPublicUser(u: Pick<User, 'id' | 'name' | 'email' | 'username' | 'avatarUrl' | 'platformRole' | 'createdAt'>) {
   return {
@@ -35,6 +37,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly audit: AuditService,
+    private readonly verification: EmailVerificationService,
   ) {}
 
   async loginWithGoogle(credential: string) {
@@ -77,9 +80,17 @@ export class AuthService {
     return this.issue(user);
   }
 
-  /** 회원가입 (아이디 = 이메일) */
-  async signup(input: SignupInput) {
+  /** 회원가입 전 인증번호 발송 (아이디 = 이메일) */
+  async sendSignupCode(email: string) {
+    await this.assertAccountAvailable(email);
+    await this.verification.send(email, 'SIGNUP', null);
+    return { ok: true };
+  }
+
+  /** 회원가입 (아이디 = 이메일). 인증번호 확인 후 가입 */
+  async signup(input: SignupWithCodeInput) {
     await this.assertAccountAvailable(input.email);
+    await this.verification.verify(input.email, 'SIGNUP', input.emailCode, null);
     const user = await this.prisma.$transaction(async (tx) => {
       const created = await tx.user.create({
         data: {
@@ -104,13 +115,29 @@ export class AuthService {
     }
   }
 
-  /** 비밀번호 찾기 요청 (빈 구현). 계정 존재 여부는 응답으로 드러내지 않음 */
-  async requestPasswordReset(email: string) {
-    const user = await this.prisma.user.findFirst({ where: { OR: [{ username: email }, { email }] } });
-    if (user) {
-      // TODO: 재설정 토큰 발급 + Mailer.send 연결
-    }
+  /** 비밀번호 찾기 1단계: 가입된 계정이면 인증번호를 메일로 보냄. 계정 존재 여부는 응답으로 드러내지 않음 */
+  async sendPasswordResetCode(email: string) {
+    const user = await this.findActiveByLoginId(email);
+    if (user?.email) await this.verification.send(user.email, 'PASSWORD_RESET', null);
     return { ok: true };
+  }
+
+  /** 비밀번호 찾기 2단계: 인증번호를 확인하고 새 비밀번호로 바꿈 */
+  async confirmPasswordReset(input: PasswordResetConfirmInput) {
+    const user = await this.findActiveByLoginId(input.email);
+    if (!user?.email) throw new AppError(ErrorCode.EMAIL_CODE_INVALID, '인증번호가 올바르지 않거나 만료되었습니다', HttpStatus.BAD_REQUEST);
+    await this.verification.verify(user.email, 'PASSWORD_RESET', input.emailCode, null);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(input.password, 10) } });
+      await this.audit.log(tx, { actorId: user.id, action: 'auth.password_reset', targetType: 'User', targetId: user.id });
+    });
+    return { ok: true };
+  }
+
+  private findActiveByLoginId(id: string) {
+    return this.prisma.user.findFirst({
+      where: { status: 'ACTIVE', OR: [{ username: id }, { email: id }] },
+    });
   }
 
   /** 비밀번호 변경. 비밀번호가 없는 계정(Google 전용)은 현재 비밀번호 없이 설정 */

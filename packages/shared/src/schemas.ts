@@ -12,6 +12,8 @@ export type MasterLoginInput = z.infer<typeof masterLoginSchema>;
 
 const passwordSchema = z.string().min(8).max(100);
 const emailSchema = z.string().email().max(100).transform((v) => v.toLowerCase());
+/** 이메일 인증번호 (6자리 숫자) */
+export const emailCodeSchema = z.string().regex(/^\d{6}$/);
 const phoneSchema = z.string().regex(/^[0-9+\-() ]{7,20}$/);
 const birthDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -58,7 +60,13 @@ export const changePasswordSchema = z.object({
 });
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 
-export const updateProfileSchema = z.object({ name: z.string().min(1).max(50) });
+export const updateProfileSchema = z
+  .object({
+    name: z.string().min(1).max(50).optional(),
+    email: emailSchema.optional(), // 아이디(이메일) 변경. 새 주소로 받은 인증번호가 필요
+    emailCode: emailCodeSchema.optional(),
+  })
+  .refine((v) => !v.email || v.emailCode, { message: '인증번호를 입력해 주세요', path: ['emailCode'] });
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 
 export const joinLookupSchema = z.object({ code: z.string().min(1) });
@@ -135,6 +143,16 @@ export type SetMemberRoleInput = z.infer<typeof setMemberRoleSchema>;
 
 export const passwordResetRequestSchema = z.object({ email: emailSchema });
 export type PasswordResetRequestInput = z.infer<typeof passwordResetRequestSchema>;
+
+export const passwordResetConfirmSchema = z.object({ email: emailSchema, emailCode: emailCodeSchema, password: passwordSchema });
+export type PasswordResetConfirmInput = z.infer<typeof passwordResetConfirmSchema>;
+
+export const emailCodeRequestSchema = z.object({ email: emailSchema });
+export type EmailCodeRequestInput = z.infer<typeof emailCodeRequestSchema>;
+
+/** 인증번호를 확인해야 하는 공개 회원가입 */
+export const signupWithCodeSchema = signupSchema.extend({ emailCode: emailCodeSchema });
+export type SignupWithCodeInput = z.infer<typeof signupWithCodeSchema>;
 
 export const nominateEmployeeOfTheMonthSchema = z.object({
   nomineeId: z.string().min(1),

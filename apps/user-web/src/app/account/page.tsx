@@ -26,6 +26,8 @@ export default function AccountPage() {
   const [deactivatePassword, setDeactivatePassword] = useState('');
   const [error, setError] = useState<string>();
   const [message, setMessage] = useState<string>();
+  const [emailForm, setEmailForm] = useState({ email: '', code: '' });
+  const [emailCodeSent, setEmailCodeSent] = useState(false);
 
   useEffect(() => {
     if (me) setName(me.name);
@@ -64,6 +66,57 @@ export default function AccountPage() {
         <div className="flex gap-2">
           <Input value={name} onChange={(e) => setName(e.target.value)} />
           <Button onClick={() => run(() => api('/me', { method: 'PATCH', body: { name } }), '이름을 저장했습니다')}>저장</Button>
+        </div>
+      </Card>
+
+      <Card className="space-y-3">
+        <h2 className="font-bold">이메일(아이디) 변경</h2>
+        <p className="text-xs text-slate-500">새 이메일로 받은 인증번호를 입력해야 변경됩니다.</p>
+        <div className="flex gap-2">
+          <Input
+            type="email"
+            placeholder="새 이메일"
+            value={emailForm.email}
+            onChange={(e) => {
+              setEmailForm({ ...emailForm, email: e.target.value });
+              setEmailCodeSent(false);
+            }}
+          />
+          <Button
+            variant="secondary"
+            className="shrink-0"
+            disabled={!emailForm.email}
+            onClick={async () => {
+              const ok = await run(() => api('/me/email-code', { body: { email: emailForm.email } }), '인증번호를 보냈습니다. 10분 안에 입력해 주세요.');
+              if (ok) setEmailCodeSent(true);
+            }}
+          >
+            {emailCodeSent ? '재발송' : '인증번호'}
+          </Button>
+        </div>
+        <div className="flex gap-2">
+          <Input
+            placeholder="인증번호 6자리"
+            inputMode="numeric"
+            maxLength={6}
+            value={emailForm.code}
+            onChange={(e) => setEmailForm({ ...emailForm, code: e.target.value.replace(/\D/g, '') })}
+          />
+          <Button
+            disabled={!emailCodeSent || emailForm.code.length !== 6}
+            onClick={async () => {
+              const ok = await run(
+                () => api('/me', { method: 'PATCH', body: { name, email: emailForm.email, emailCode: emailForm.code } }),
+                '이메일을 변경했습니다',
+              );
+              if (!ok) return;
+              setEmailForm({ email: '', code: '' });
+              setEmailCodeSent(false);
+              qc.invalidateQueries({ queryKey: ['me'] });
+            }}
+          >
+            변경
+          </Button>
         </div>
       </Card>
 

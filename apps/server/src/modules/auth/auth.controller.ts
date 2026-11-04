@@ -10,10 +10,14 @@ import {
   localLoginSchema,
   MasterLoginInput,
   masterLoginSchema,
+  PasswordResetConfirmInput,
+  passwordResetConfirmSchema,
   PasswordResetRequestInput,
   passwordResetRequestSchema,
-  SignupInput,
-  signupSchema,
+  SignupWithCodeInput,
+  signupWithCodeSchema,
+  emailCodeRequestSchema,
+  EmailCodeRequestInput,
 } from '@weplay/shared';
 import { AuthUser, CurrentUser, Public } from '../../common/decorators';
 import { ZodPipe } from '../../common/zod.pipe';
@@ -49,14 +53,26 @@ export class AuthController {
 
   @Public()
   @Post('signup')
-  signup(@Body(new ZodPipe(signupSchema)) body: SignupInput) {
+  signup(@Body(new ZodPipe(signupWithCodeSchema)) body: SignupWithCodeInput) {
     return this.auth.signup(body);
   }
 
   @Public()
-  @Post('password-reset')
-  passwordReset(@Body(new ZodPipe(passwordResetRequestSchema)) body: PasswordResetRequestInput) {
-    return this.auth.requestPasswordReset(body.email);
+  @Post('signup/email-code')
+  signupEmailCode(@Body(new ZodPipe(emailCodeRequestSchema)) body: EmailCodeRequestInput) {
+    return this.auth.sendSignupCode(body.email);
+  }
+
+  @Public()
+  @Post('password-reset/email-code')
+  passwordResetEmailCode(@Body(new ZodPipe(passwordResetRequestSchema)) body: PasswordResetRequestInput) {
+    return this.auth.sendPasswordResetCode(body.email);
+  }
+
+  @Public()
+  @Post('password-reset/confirm')
+  passwordResetConfirm(@Body(new ZodPipe(passwordResetConfirmSchema)) body: PasswordResetConfirmInput) {
+    return this.auth.confirmPasswordReset(body);
   }
 
   @Post('change-password')
