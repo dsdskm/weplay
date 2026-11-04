@@ -19,7 +19,7 @@ export function Modal({ open, onClose, title, children, footer, wide }: { open: 
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-[55] flex items-end justify-center bg-slate-900/40 sm:items-center sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[55] flex items-end justify-center bg-slate-900/40 sm:items-center sm:p-4">
       <div role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()} className={cn('wp-sheet flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl', wide ? 'sm:max-w-3xl' : 'sm:max-w-lg')}>
         <div className="border-b border-slate-100 px-5 pb-3 pt-2 sm:pt-4">
           <span className="mx-auto mb-2 block h-1 w-10 rounded-full bg-slate-200 sm:hidden" />

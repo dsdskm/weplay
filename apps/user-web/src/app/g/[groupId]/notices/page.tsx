@@ -4,11 +4,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState } from 'react';
 import { SYSTEM_NOTICE_LEVELS } from '@weplay/shared';
+import type { Attachment } from '@weplay/shared';
+import { AttachmentPicker } from '@/components/attachments';
 import { Avatar, Badge, Button, Card, cn, Empty, ErrorText, Input } from '@/components/ui';
 import { Modal } from '@/components/modal';
 import { Pager } from '@/components/pager';
 import { Tabs } from '@/components/tabs';
-import { api, errorMessage } from '@/lib/api';
+import { api, errorMessage, uploadAttachment } from '@/lib/api';
 import { pagesOf, timeAgo } from '@/lib/format';
 import { useGroupId } from '@/lib/hooks';
 import type { Paginated } from '@/lib/types';
@@ -45,6 +47,8 @@ export default function NoticesPage() {
   const [writing, setWriting] = useState(false);
   const [form, setForm] = useState({ title: '', body: '', teamId: '', pinned: false, important: false });
   const [error, setError] = useState<string>();
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   const { data } = useQuery({
     queryKey: ['group', groupId, 'notices', page, q],
@@ -58,10 +62,11 @@ export default function NoticesPage() {
   });
 
   const create = useMutation({
-    mutationFn: () => api(`/groups/${groupId}/notices`, { body: { ...form, title: form.title.trim(), body: form.body.trim(), teamId: form.teamId || null } }),
+    mutationFn: () => api(`/groups/${groupId}/notices`, { body: { ...form, title: form.title.trim(), body: form.body.trim(), teamId: form.teamId || null, attachments } }),
     onSuccess: () => {
       setWriting(false);
       setForm({ title: '', body: '', teamId: '', pinned: false, important: false });
+      setAttachments([]);
       setError(undefined);
       qc.invalidateQueries({ queryKey: ['group', groupId, 'notices'] });
     },
@@ -166,14 +171,14 @@ export default function NoticesPage() {
 
       <Modal
         open={writing}
-        onClose={() => setWriting(false)}
+        onClose={() => { if (!uploading && !create.isPending) setWriting(false); }}
         title="공지 쓰기"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setWriting(false)}>
+            <Button variant="ghost" disabled={uploading || create.isPending} onClick={() => setWriting(false)}>
               취소
             </Button>
-            <Button onClick={() => create.mutate()} disabled={!form.title.trim() || !form.body.trim() || create.isPending}>
+            <Button onClick={() => create.mutate()} disabled={!form.title.trim() || !form.body.trim() || create.isPending || uploading}>
               올리기
             </Button>
           </>
@@ -191,6 +196,7 @@ export default function NoticesPage() {
           </select>
           <Input placeholder="제목" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} maxLength={100} />
           <textarea className="min-h-48 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="내용" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} />
+          <AttachmentPicker value={attachments} onChange={setAttachments} upload={(file) => uploadAttachment(groupId, file)} onUploadingChange={setUploading} disabled={create.isPending} />
           <div className="flex gap-4 text-sm">
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={form.pinned} onChange={(e) => setForm({ ...form, pinned: e.target.checked })} /> 맨 위 고정

@@ -88,7 +88,7 @@ function DialogBox({ active, onClose }: { active: Active; onClose: (value: unkno
   const okDisabled = mode === 'prompt' && !!options.required && !text.trim();
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4" onClick={() => onClose(cancelValue)}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4">
       <Card className="w-full max-w-sm space-y-4">
         <div className="space-y-4" onClick={(e) => e.stopPropagation()}>
           <h2 className="font-bold">{options.title ?? (mode === 'alert' ? '알림' : '확인')}</h2>

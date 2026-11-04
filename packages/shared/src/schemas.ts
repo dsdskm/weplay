@@ -151,7 +151,10 @@ export const emailCodeRequestSchema = z.object({ email: emailSchema });
 export type EmailCodeRequestInput = z.infer<typeof emailCodeRequestSchema>;
 
 /** 인증번호를 확인해야 하는 공개 회원가입 */
-export const signupWithCodeSchema = signupSchema.extend({ emailCode: emailCodeSchema });
+export const signupWithCodeSchema = signupSchema.extend({
+  emailCode: emailCodeSchema,
+  termsIds: z.array(z.string().min(1)).min(1, '필수 약관에 동의해 주세요').max(10),
+});
 export type SignupWithCodeInput = z.infer<typeof signupWithCodeSchema>;
 
 export const nominateEmployeeOfTheMonthSchema = z.object({

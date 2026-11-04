@@ -3,9 +3,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState } from 'react';
+import type { Attachment } from '@weplay/shared';
+import { AttachmentPicker } from '@/components/attachments';
 import { Badge, Button, Card, Empty, ErrorText, Input } from '@/components/ui';
 import { Pager } from '@/components/pager';
-import { api, errorMessage } from '@/lib/api';
+import { api, errorMessage, uploadAttachment } from '@/lib/api';
 import { useGroupId } from '@/lib/hooks';
 import type { Paginated } from '@/lib/types';
 
@@ -35,6 +37,8 @@ export default function BoardPage() {
   const [writing, setWriting] = useState(false);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [anonymous, setAnonymous] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -49,12 +53,13 @@ export default function BoardPage() {
   });
 
   const create = useMutation({
-    mutationFn: () => api(`/groups/${groupId}/board/posts`, { body: { teamId: current?.teamId ?? null, title: title.trim(), body: body.trim(), anonymous } }),
+    mutationFn: () => api(`/groups/${groupId}/board/posts`, { body: { teamId: current?.teamId ?? null, title: title.trim(), body: body.trim(), anonymous, attachments } }),
     onSuccess: () => {
       setError(undefined);
       setWriting(false);
       setTitle('');
       setBody('');
+      setAttachments([]);
       setAnonymous(false);
       qc.invalidateQueries({ queryKey: ['group', groupId, 'board'] });
     },
@@ -69,7 +74,7 @@ export default function BoardPage() {
     <div className="mx-auto max-w-3xl space-y-5">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">자유 게시판</h1>
-        <Button onClick={() => setWriting((v) => !v)}>{writing ? '닫기' : '글쓰기'}</Button>
+        <Button disabled={uploading || create.isPending} onClick={() => setWriting((v) => !v)}>{writing ? '닫기' : '글쓰기'}</Button>
       </div>
       <div className="flex flex-wrap gap-2">
         {boards.boards.map((b) => (
@@ -93,6 +98,7 @@ export default function BoardPage() {
           <p className="text-xs text-slate-500">{current.name} 게시판에 글을 써요</p>
           <Input placeholder="제목" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={100} />
           <textarea className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" rows={6} placeholder="내용" value={body} onChange={(e) => setBody(e.target.value)} />
+          <AttachmentPicker value={attachments} onChange={setAttachments} upload={(file) => uploadAttachment(groupId, file)} onUploadingChange={setUploading} disabled={create.isPending} />
           <div className="flex items-center justify-between">
             {boards.anonymousAllowed ? (
               <label className="flex items-center gap-2 text-sm">
@@ -101,7 +107,7 @@ export default function BoardPage() {
             ) : (
               <span />
             )}
-            <Button onClick={() => create.mutate()} disabled={!title.trim() || !body.trim() || create.isPending}>
+            <Button onClick={() => create.mutate()} disabled={!title.trim() || !body.trim() || create.isPending || uploading}>
               등록
             </Button>
           </div>

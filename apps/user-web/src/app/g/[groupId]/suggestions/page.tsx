@@ -4,11 +4,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState } from 'react';
 import { labelOf, SUGGESTION_CATEGORIES, SUGGESTION_STATUS } from '@weplay/shared';
+import type { Attachment } from '@weplay/shared';
+import { AttachmentPicker } from '@/components/attachments';
 import { Badge, Button, Card, cn, Empty, ErrorText, Input } from '@/components/ui';
 import { Modal } from '@/components/modal';
 import { Pager } from '@/components/pager';
 import { Tabs } from '@/components/tabs';
-import { api, errorMessage } from '@/lib/api';
+import { api, errorMessage, uploadAttachment } from '@/lib/api';
 import { pagesOf, timeAgo } from '@/lib/format';
 import { useGroupId } from '@/lib/hooks';
 import type { Paginated } from '@/lib/types';
@@ -42,6 +44,8 @@ export default function SuggestionsPage() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ title: '', body: '', category: 'ETC', anonymous: false, teamId: '' });
   const [error, setError] = useState<string>();
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   const { data } = useQuery({
     queryKey: ['group', groupId, 'suggestions', status, sort, mine, page],
@@ -49,10 +53,11 @@ export default function SuggestionsPage() {
   });
   const refresh = () => qc.invalidateQueries({ queryKey: ['group', groupId, 'suggestions'] });
   const create = useMutation({
-    mutationFn: () => api(`/groups/${groupId}/suggestions`, { body: { ...form, title: form.title.trim(), body: form.body.trim(), teamId: form.teamId || null } }),
+    mutationFn: () => api(`/groups/${groupId}/suggestions`, { body: { ...form, title: form.title.trim(), body: form.body.trim(), teamId: form.teamId || null, attachments } }),
     onSuccess: () => {
       setOpen(false);
       setForm({ title: '', body: '', category: 'ETC', anonymous: false, teamId: '' });
+      setAttachments([]);
       setError(undefined);
       refresh();
     },
@@ -143,10 +148,10 @@ export default function SuggestionsPage() {
 
       <Modal
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={() => { if (!uploading && !create.isPending) setOpen(false); }}
         title="건의하기"
         footer={
-          <Button onClick={() => create.mutate()} disabled={!form.title.trim() || !form.body.trim() || create.isPending}>
+          <Button onClick={() => create.mutate()} disabled={!form.title.trim() || !form.body.trim() || create.isPending || uploading}>
             올리기
           </Button>
         }
@@ -172,6 +177,7 @@ export default function SuggestionsPage() {
           </div>
           <Input placeholder="한 줄로 요약해 주세요" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} maxLength={100} />
           <textarea className="min-h-36 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="불편한 점과 바라는 점을 자유롭게 적어 주세요" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} />
+          <AttachmentPicker value={attachments} onChange={setAttachments} upload={(file) => uploadAttachment(groupId, file)} onUploadingChange={setUploading} disabled={create.isPending} />
           {data.anonymousAllowed && (
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={form.anonymous} onChange={(e) => setForm({ ...form, anonymous: e.target.checked })} /> 익명으로 올리기 (관리자에게도 이름이 보이지 않아요)

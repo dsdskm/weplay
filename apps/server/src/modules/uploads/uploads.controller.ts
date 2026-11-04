@@ -12,7 +12,7 @@ export class UploadsController {
   constructor(
     private readonly uploads: UploadsService,
     private readonly settings: FeatureSettingsService,
-  ) {}
+  ) { }
 
   @Post()
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: maxUploadBytes() } }))
@@ -20,17 +20,29 @@ export class UploadsController {
     const mission = await this.settings.get(groupId, 'PHOTO_MISSION');
     return this.uploads.save(file, mission.allowVideo !== false);
   }
+
+  @Post('attachments')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: maxUploadBytes() } }))
+  uploadAttachment(@UploadedFile() file: UploadedFileLike | undefined) {
+    return this.uploads.saveAttachment(file);
+  }
 }
 
 /** MASTER 업로드 (기능 소개 이미지 등, 사진만) */
 @UseGuards(MasterGuard)
 @Controller('admin/uploads')
 export class AdminUploadsController {
-  constructor(private readonly uploads: UploadsService) {}
+  constructor(private readonly uploads: UploadsService) { }
 
   @Post()
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: maxUploadBytes() } }))
   upload(@UploadedFile() file: UploadedFileLike | undefined) {
     return this.uploads.save(file, false);
+  }
+
+  @Post('attachments')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: maxUploadBytes() } }))
+  uploadAttachment(@UploadedFile() file: UploadedFileLike | undefined) {
+    return this.uploads.saveAttachment(file, true);
   }
 }

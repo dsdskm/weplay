@@ -7,7 +7,6 @@ import { useQuery } from '@tanstack/react-query';
 import { GAMES, groupByCategory } from '@weplay/shared';
 import { Avatar, Badge, Button, cn, Logo } from '@/components/ui';
 import { SystemBanner } from '@/components/system-banner';
-import { TermsGate } from '@/components/terms-gate';
 import { ApiError, api } from '@/lib/api';
 import { LAST_GROUP_KEY, logout, useFeatureFlags, useGroup, useMe, useMyGroups, useRequireAuth } from '@/lib/hooks';
 import type { ComplimentOverview, EotmOverview, PointsMe, TeamItem } from '@/lib/types';
@@ -107,9 +106,9 @@ export default function GroupLayout({ children }: { children: React.ReactNode })
   const adminNav: NavItem[] = [
     ...(manager
       ? [
-          { href: `${base}/admin/requests`, label: '가입 요청', icon: '📨', badge: isGroupAdmin ? group?.pendingCount || undefined : undefined },
-          { href: `${base}/admin/teams`, label: '팀 관리', icon: '👥' },
-        ]
+        { href: `${base}/admin/requests`, label: '가입 요청', icon: '📨', badge: isGroupAdmin ? group?.pendingCount || undefined : undefined },
+        { href: `${base}/admin/teams`, label: '팀 관리', icon: '👥' },
+      ]
       : []),
     ...(isGroupAdmin ? [{ href: `${base}/admin/settings`, label: '그룹 설정', icon: '🛠️' }] : []),
     ...(manager ? [{ href: `${base}/admin/features`, label: '기능 신청', icon: '🧩' }] : []),
@@ -121,9 +120,9 @@ export default function GroupLayout({ children }: { children: React.ReactNode })
       : []),
     ...(compliments?.enabled && manager
       ? [
-          { href: `${base}/admin/compliments`, label: '칭찬 카드 설정', icon: '💌' },
-          { href: `${base}/admin/compliment-cards`, label: '칭찬 관리', icon: '📋' },
-        ]
+        { href: `${base}/admin/compliments`, label: '칭찬 카드 설정', icon: '💌' },
+        { href: `${base}/admin/compliment-cards`, label: '칭찬 관리', icon: '📋' },
+      ]
       : []),
   ];
   const approved = groups?.filter((c) => c.joinStatus === 'APPROVED') ?? [];
@@ -248,7 +247,6 @@ export default function GroupLayout({ children }: { children: React.ReactNode })
         </button>
       </nav>
 
-      <TermsGate />
     </div>
   );
 }

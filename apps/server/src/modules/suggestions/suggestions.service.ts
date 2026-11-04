@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
-import { ErrorCode, FeatureKey } from '@weplay/shared';
+import { attachmentSizeLimit, createAttachmentInputSchema, readAttachments, ErrorCode, FeatureKey } from '@weplay/shared';
 import { HttpStatus } from '@nestjs/common';
 import { AppError } from '../../common/app-error';
 import { AuditService } from '../../common/audit.service';
@@ -13,8 +13,9 @@ import { PointsBadgeService } from '../points-badge/points-badge.service';
 
 const FEATURE = FeatureKey.SUGGESTION_BOX;
 const userSelect = { id: true, name: true, avatarUrl: true } as const;
+const attachmentInputSchema = createAttachmentInputSchema(attachmentSizeLimit(process.env.MAX_UPLOAD_MB));
 
-export const suggestionSchema = z.object({
+export const suggestionSchema = attachmentInputSchema.extend({
   title: z.string().trim().min(1).max(100),
   body: z.string().trim().min(1).max(5000),
   category: z.enum(['WORK', 'WELFARE', 'SYSTEM', 'FACILITY', 'ETC']).default('ETC'),
@@ -38,7 +39,7 @@ export class SuggestionsService {
     private readonly features: FeaturesService,
     private readonly settings: FeatureSettingsService,
     private readonly points: PointsBadgeService,
-  ) {}
+  ) { }
 
   private async myTeams(groupId: string, userId: string) {
     return this.prisma.teamMember.findMany({ where: { groupId, userId, team: { deletedAt: null } }, select: { teamId: true, role: true } });
@@ -80,6 +81,7 @@ export class SuggestionsService {
           id: s.id,
           title: s.title,
           excerpt: s.body.slice(0, 120),
+          attachments: readAttachments(s.attachments),
           category: s.category,
           status: s.status,
           teamName: s.teamId ? (teamName.get(s.teamId) ?? null) : null,
@@ -117,6 +119,7 @@ export class SuggestionsService {
       id: s.id,
       title: s.title,
       body: s.body,
+      attachments: readAttachments(s.attachments),
       category: s.category,
       status: s.status,
       anonymous: s.anonymous,
@@ -141,7 +144,7 @@ export class SuggestionsService {
     if (input.anonymous && !cfg.anonymousAllowed) throw new AppError(ErrorCode.VALIDATION_FAILED, '익명 건의는 쓸 수 없어요', HttpStatus.BAD_REQUEST);
     if (input.teamId && !isGroupAdmin && !(await this.myTeams(groupId, actor.id)).some((t) => t.teamId === input.teamId)) throw AppError.forbidden('우리 팀에만 건의할 수 있어요');
     const row = await this.prisma.suggestion.create({
-      data: { groupId, teamId: input.teamId ?? null, authorId: actor.id, anonymous: !!input.anonymous, category: input.category, title: input.title, body: input.body },
+      data: { groupId, teamId: input.teamId ?? null, authorId: actor.id, anonymous: !!input.anonymous, category: input.category, title: input.title, body: input.body, attachments: input.attachments },
     });
     return { id: row.id };
   }
@@ -151,7 +154,7 @@ export class SuggestionsService {
     const s = await this.suggestionFor(groupId, actor, isGroupAdmin, id);
     if (s.authorId !== actor.id) throw AppError.forbidden('작성자만 수정할 수 있어요');
     if (s.status !== 'RECEIVED') throw new AppError(ErrorCode.VALIDATION_FAILED, '검토가 시작된 건의는 수정할 수 없어요', HttpStatus.BAD_REQUEST);
-    await this.prisma.suggestion.update({ where: { id }, data: { title: input.title, body: input.body, category: input.category } });
+    await this.prisma.suggestion.update({ where: { id }, data: { title: input.title, body: input.body, category: input.category, attachments: input.attachments } });
     return { ok: true };
   }
 

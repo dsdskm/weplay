@@ -2,11 +2,13 @@
 
 import { useMe, logout } from '@/lib/hooks';
 import { Button, Card, Logo } from './ui';
+import { usePathname } from 'next/navigation';
 
 /** 정지/비활성 계정은 로그인 후 아무 화면도 보지 못하고 안내만 본다 */
 export function InactiveGate({ children }: { children: React.ReactNode }) {
   const { data: me } = useMe();
-  if (me?.status && me.status !== 'ACTIVE') {
+  const pathname = usePathname();
+  if (pathname !== '/terms' && me?.status && me.status !== 'ACTIVE') {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
         <Card className="w-full max-w-sm space-y-4 text-center">

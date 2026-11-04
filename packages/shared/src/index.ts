@@ -9,3 +9,4 @@ export * from './duty';
 export * from './board-support';
 export * from './kst';
 export * from './social';
+export * from './attachments';

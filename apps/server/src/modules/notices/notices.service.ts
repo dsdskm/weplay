@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
+import { attachmentSizeLimit, createAttachmentInputSchema, readAttachments } from '@weplay/shared';
 import { AppError } from '../../common/app-error';
 import { AuditService } from '../../common/audit.service';
 import { AuthUser } from '../../common/decorators';
@@ -7,8 +8,9 @@ import { paged, PageQuery } from '../../common/paging';
 import { PrismaService } from '../../common/prisma.service';
 
 const userSelect = { id: true, name: true, avatarUrl: true } as const;
+const attachmentInputSchema = createAttachmentInputSchema(attachmentSizeLimit(process.env.MAX_UPLOAD_MB));
 
-export const noticeSchema = z.object({
+export const noticeSchema = attachmentInputSchema.extend({
   title: z.string().trim().min(1).max(100),
   body: z.string().trim().min(1).max(10000),
   teamId: z.string().min(1).nullable().optional(),
@@ -17,7 +19,7 @@ export const noticeSchema = z.object({
 });
 export type NoticeInput = z.infer<typeof noticeSchema>;
 
-export const systemNoticeSchema = z.object({
+export const systemNoticeSchema = attachmentInputSchema.extend({
   title: z.string().trim().min(1).max(100),
   body: z.string().trim().min(1).max(10000),
   level: z.enum(['INFO', 'UPDATE', 'MAINTENANCE', 'URGENT']).default('INFO'),
@@ -41,7 +43,7 @@ export class NoticesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-  ) {}
+  ) { }
 
   private async myTeams(groupId: string, userId: string) {
     return this.prisma.teamMember.findMany({ where: { groupId, userId, team: { deletedAt: null } }, select: { teamId: true, role: true } });
@@ -84,6 +86,7 @@ export class NoticesService {
           id: n.id,
           title: n.title,
           excerpt: n.body.slice(0, 100),
+          attachments: readAttachments(n.attachments),
           teamName: n.teamId ? (teamName.get(n.teamId) ?? null) : null,
           pinned: n.pinned,
           important: n.important,
@@ -111,14 +114,14 @@ export class NoticesService {
       n.teamId ? this.prisma.teamMember.count({ where: { teamId: n.teamId } }) : this.prisma.groupMembership.count({ where: { groupId, status: 'APPROVED' } }),
     ]);
     const canEdit = isGroupAdmin || (!!n.teamId && teams.some((t) => t.teamId === n.teamId && t.role === 'ADMIN'));
-    return { ...n, author, readCount, memberCount, canEdit };
+    return { ...n, attachments: readAttachments(n.attachments), author, readCount, memberCount, canEdit };
   }
 
   async create(actor: AuthUser, groupId: string, isGroupAdmin: boolean, input: NoticeInput) {
     await this.assertWriter(groupId, actor.id, isGroupAdmin, input.teamId);
     const row = await this.prisma.$transaction(async (tx) => {
       const n = await tx.notice.create({
-        data: { groupId, teamId: input.teamId ?? null, authorId: actor.id, title: input.title, body: input.body, pinned: !!input.pinned, important: !!input.important },
+        data: { groupId, teamId: input.teamId ?? null, authorId: actor.id, title: input.title, body: input.body, pinned: !!input.pinned, important: !!input.important, attachments: input.attachments },
       });
       await tx.noticeRead.create({ data: { noticeId: n.id, userId: actor.id } });
       await this.audit.log(tx, { groupId, actorId: actor.id, action: 'notice.create', targetType: 'Notice', targetId: n.id, after: { title: n.title } });
@@ -131,7 +134,7 @@ export class NoticesService {
     const n = await this.prisma.notice.findFirst({ where: { id, groupId } });
     if (!n) throw AppError.notFound('공지를 찾을 수 없어요');
     await this.assertWriter(groupId, actor.id, isGroupAdmin, n.teamId);
-    await this.prisma.notice.update({ where: { id }, data: { title: input.title, body: input.body, pinned: !!input.pinned, important: !!input.important } });
+    await this.prisma.notice.update({ where: { id }, data: { title: input.title, body: input.body, pinned: !!input.pinned, important: !!input.important, attachments: input.attachments } });
     return { ok: true };
   }
 
@@ -156,7 +159,7 @@ export class NoticesService {
       this.prisma.systemNotice.count({ where }),
     ]);
     return paged(
-      rows.map((n) => ({ id: n.id, title: n.title, body: n.body, level: n.level, pinned: n.pinned, banner: n.banner, createdAt: n.createdAt })),
+      rows.map((n) => ({ id: n.id, title: n.title, body: n.body, attachments: readAttachments(n.attachments), level: n.level, pinned: n.pinned, banner: n.banner, createdAt: n.createdAt })),
       total,
       q,
     );
@@ -174,7 +177,7 @@ export class NoticesService {
   async systemDetail(id: string, includeHidden = false) {
     const n = await this.prisma.systemNotice.findFirst({ where: { id, ...(includeHidden ? {} : activeSystem()) } });
     if (!n) throw AppError.notFound('공지를 찾을 수 없어요');
-    return n;
+    return { ...n, attachments: readAttachments(n.attachments) };
   }
 
   /** MASTER: 전체 목록 (게시 전·끝난 공지 포함) */
@@ -183,13 +186,14 @@ export class NoticesService {
       this.prisma.systemNotice.findMany({ orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }], skip: q.skip, take: q.pageSize }),
       this.prisma.systemNotice.count(),
     ]);
-    return paged(rows, total, q);
+    return paged(rows.map((n) => ({ ...n, attachments: readAttachments(n.attachments) })), total, q);
   }
 
   private systemData(input: SystemNoticeInput) {
     return {
       title: input.title,
       body: input.body,
+      attachments: input.attachments,
       level: input.level,
       pinned: !!input.pinned,
       banner: !!input.banner,

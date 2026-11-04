@@ -4,9 +4,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { readAttachments, type Attachment } from '@weplay/shared';
+import { AttachmentList, AttachmentPicker } from '@/components/attachments';
 import { Avatar, Badge, Button, Card, ErrorText, Input } from '@/components/ui';
 import { useDialog } from '@/components/confirm-dialog';
-import { api, errorMessage } from '@/lib/api';
+import { api, errorMessage, uploadAttachment } from '@/lib/api';
 import { fmtDateTime } from '@/lib/format';
 import { useGroupId } from '@/lib/hooks';
 
@@ -14,6 +16,7 @@ interface Notice {
   id: string;
   title: string;
   body: string;
+  attachments?: Attachment[];
   teamId: string | null;
   pinned: boolean;
   important: boolean;
@@ -35,6 +38,8 @@ export default function NoticeDetailPage() {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ title: '', body: '', pinned: false, important: false });
   const [error, setError] = useState<string>();
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [uploading, setUploading] = useState(false);
   const { data: n } = useQuery({ queryKey: ['group', groupId, 'notices', 'detail', id], queryFn: () => api<Notice>(`/groups/${groupId}/notices/${id}`) });
 
   useEffect(() => {
@@ -43,9 +48,10 @@ export default function NoticeDetailPage() {
   }, [n, qc, groupId]);
 
   const save = useMutation({
-    mutationFn: () => api(`/groups/${groupId}/notices/${id}`, { method: 'PATCH', body: form }),
+    mutationFn: () => api(`/groups/${groupId}/notices/${id}`, { method: 'PATCH', body: { ...form, attachments } }),
     onSuccess: () => {
       setEditing(false);
+      setError(undefined);
       qc.invalidateQueries({ queryKey: ['group', groupId, 'notices'] });
     },
     onError: (e) => setError(errorMessage(e)),
@@ -72,6 +78,7 @@ export default function NoticeDetailPage() {
           <div className="space-y-3">
             <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} maxLength={100} />
             <textarea className="min-h-64 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} />
+            <AttachmentPicker value={attachments} onChange={setAttachments} upload={(file) => uploadAttachment(groupId, file)} onUploadingChange={setUploading} disabled={save.isPending} />
             <div className="flex flex-wrap gap-4 text-sm">
               <label className="flex items-center gap-2">
                 <input type="checkbox" checked={form.pinned} onChange={(e) => setForm({ ...form, pinned: e.target.checked })} /> 맨 위 고정
@@ -81,10 +88,10 @@ export default function NoticeDetailPage() {
               </label>
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setEditing(false)}>
+              <Button variant="ghost" disabled={uploading || save.isPending} onClick={() => setEditing(false)}>
                 취소
               </Button>
-              <Button onClick={() => save.mutate()} disabled={!form.title.trim() || !form.body.trim()}>
+              <Button onClick={() => save.mutate()} disabled={!form.title.trim() || !form.body.trim() || uploading || save.isPending}>
                 저장
               </Button>
             </div>
@@ -102,6 +109,7 @@ export default function NoticeDetailPage() {
               {n.updatedAt !== n.createdAt && ' (수정됨)'}
             </div>
             <p className="whitespace-pre-wrap leading-relaxed">{n.body}</p>
+            <AttachmentList attachments={n.attachments} />
             <div>
               <div className="mb-1 flex justify-between text-xs text-slate-500">
                 <span>읽은 사람</span>
@@ -119,6 +127,7 @@ export default function NoticeDetailPage() {
                   variant="secondary"
                   onClick={() => {
                     setForm({ title: n.title, body: n.body, pinned: n.pinned, important: n.important });
+                    setAttachments(readAttachments(n.attachments));
                     setEditing(true);
                   }}
                 >

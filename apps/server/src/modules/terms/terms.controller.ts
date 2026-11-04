@@ -9,7 +9,7 @@ import { agreeSchema, TermsInput, termsSchema, TermsService } from './terms.serv
 /** 약관 (공개 조회: 로그인 없이 볼 수 있음 → 회원가입·홍보 사이트에서 사용) */
 @Controller('terms')
 export class TermsController {
-  constructor(private readonly terms: TermsService) {}
+  constructor(private readonly terms: TermsService) { }
 
   @Public()
   @Get()
@@ -27,11 +27,16 @@ export class TermsController {
 /** 내 약관 동의 */
 @Controller('me/terms')
 export class MyTermsController {
-  constructor(private readonly terms: TermsService) {}
+  constructor(private readonly terms: TermsService) { }
 
   @Get('pending')
   pending(@CurrentUser() user: AuthUser) {
     return this.terms.pending(user);
+  }
+
+  @Get('history')
+  history(@CurrentUser() user: AuthUser) {
+    return this.terms.agreements(user);
   }
 
   @Post('agree')
@@ -44,7 +49,7 @@ export class MyTermsController {
 @UseGuards(MasterGuard)
 @Controller('admin/terms')
 export class AdminTermsController {
-  constructor(private readonly terms: TermsService) {}
+  constructor(private readonly terms: TermsService) { }
 
   @Get()
   list(@Query('type') type?: string, @Query('page') page?: string, @Query('pageSize') pageSize?: string) {
@@ -54,6 +59,16 @@ export class AdminTermsController {
   @Get(':id')
   detail(@Param('id') id: string) {
     return this.terms.adminDetail(id);
+  }
+
+  @Get(':id/notifications')
+  notifications(@Param('id') id: string) {
+    return this.terms.notifications(id);
+  }
+
+  @Post(':id/notifications/retry')
+  retry(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.terms.retry(user, id);
   }
 
   @Post()

@@ -1,7 +1,5 @@
 import { Global, Injectable, Logger, Module } from '@nestjs/common';
-import { readFileSync } from 'fs';
-import { join } from 'path';
-import { uploadDir } from '../uploads/uploads.service';
+import { parseUploadUrl, readUploadBuffer } from '../uploads/uploads.service';
 
 /**
  * 외부 AI 호출 (선택 기능). 키가 없거나 호출이 실패하면 null 을 돌려주고,
@@ -13,12 +11,6 @@ const TEXT_MODEL = process.env.AI_TEXT_MODEL ?? 'claude-haiku-5-5';
 const TEXT_TIMEOUT = 20_000;
 const IMAGE_TIMEOUT = 90_000;
 const MIME: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp' };
-
-/** 업로드 파일 주소(/uploads/<32자리 hex>.<ext>)를 실제 경로로. 다른 경로는 허용하지 않음 */
-export function uploadPathOf(mediaUrl: string): string | null {
-  const m = /^\/uploads\/([a-f0-9]{32}\.[a-z0-9]{2,4})$/.exec(mediaUrl);
-  return m ? join(uploadDir(), m[1]) : null;
-}
 
 /** 모델 응답에서 JSON 추출 (코드펜스·설명 문장이 섞여도 첫 번째 배열/객체를 찾음) */
 export function parseJson<T>(text: string): T | null {
@@ -57,8 +49,9 @@ export class AiService {
 
   /** 사진을 보고 답하기 (AI Vision). 업로드된 이미지만 허용 */
   async vision(mediaUrl: string, prompt: string, maxTokens = 400): Promise<string | null> {
-    const image = this.imagePayload(mediaUrl);
-    if (!this.textEnabled || !image) return null;
+    if (!this.textEnabled) return null;
+    const image = await this.imagePayload(mediaUrl);
+    if (!image) return null;
     return this.anthropic({
       model: TEXT_MODEL,
       max_tokens: maxTokens,
@@ -119,13 +112,12 @@ export class AiService {
     }
   }
 
-  private imagePayload(mediaUrl: string) {
-    const path = uploadPathOf(mediaUrl);
-    const ext = path?.split('.').pop()?.toLowerCase() ?? '';
-    const mime = MIME[ext];
-    if (!path || !mime) return null;
+  private async imagePayload(mediaUrl: string) {
+    const parsed = parseUploadUrl(mediaUrl);
+    const mime = parsed ? MIME[parsed.ext] : undefined;
+    if (!mime) return null;
     try {
-      return { mime, data: readFileSync(path).toString('base64') };
+      return { mime, data: (await readUploadBuffer(mediaUrl)).toString('base64') };
     } catch {
       return null;
     }
@@ -168,4 +160,4 @@ const base = () => (process.env.IMAGE_API_URL ?? '').replace(/\/$/, '');
 
 @Global()
 @Module({ providers: [AiService], exports: [AiService] })
-export class AiModule {}
+export class AiModule { }

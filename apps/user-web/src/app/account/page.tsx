@@ -16,11 +16,18 @@ interface Me {
   hasPassword: boolean;
 }
 
+interface Agreement {
+  id: string;
+  agreedAt: string;
+  terms: { type: string; title: string; version: number; effectiveAt: string | null };
+}
+
 export default function AccountPage() {
   const { confirm } = useDialog();
   const router = useRouter();
   const qc = useQueryClient();
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/me') });
+  const agreements = useQuery({ queryKey: ['me', 'terms', 'history'], queryFn: () => api<Agreement[]>('/me/terms/history'), enabled: !!me });
   const [name, setName] = useState('');
   const [pw, setPw] = useState({ currentPassword: '', newPassword: '', confirm: '' });
   const [deactivatePassword, setDeactivatePassword] = useState('');
@@ -174,6 +181,17 @@ export default function AccountPage() {
           </Button>
         </div>
       </Card>
+
+      <section className="space-y-3 border-t border-slate-200 pt-4">
+        <h2 className="font-bold">약관 동의 이력</h2>
+        {agreements.isPending && <p role="status" className="text-sm text-slate-500">동의 이력을 불러오는 중입니다.</p>}
+        {agreements.isError && <p role="alert" className="text-sm text-rose-600">동의 이력을 불러오지 못했습니다. <button type="button" className="underline" onClick={() => agreements.refetch()}>다시 시도</button></p>}
+        {agreements.data?.length === 0 && <p className="text-sm text-slate-500">아직 동의한 약관이 없습니다.</p>}
+        {agreements.data?.map((agreement) => <div key={agreement.id} className="space-y-1 border-b border-slate-100 pb-2 text-sm">
+          <Link className="break-words text-brand-700 underline" href={`/terms?type=${agreement.terms.type}&version=${agreement.terms.version}`}>{agreement.terms.title} v{agreement.terms.version}</Link>
+          <p className="text-xs text-slate-500">동의일: {new Date(agreement.agreedAt).toLocaleString('ko-KR')}</p>
+        </div>)}
+      </section>
 
       <ErrorText>{error}</ErrorText>
       {message && <p className="text-sm text-emerald-600">{message}</p>}

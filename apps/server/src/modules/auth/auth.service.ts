@@ -16,6 +16,7 @@ import { AppError } from '../../common/app-error';
 import { AuditService } from '../../common/audit.service';
 import { PrismaService } from '../../common/prisma.service';
 import { EmailVerificationService } from '../../common/email-verification.service';
+import { lockTerms, validateConsent } from '../../common/terms-policy';
 
 export function toPublicUser(u: Pick<User, 'id' | 'name' | 'email' | 'username' | 'avatarUrl' | 'platformRole' | 'createdAt'>) {
   return {
@@ -38,7 +39,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly audit: AuditService,
     private readonly verification: EmailVerificationService,
-  ) {}
+  ) { }
 
   async loginWithGoogle(credential: string) {
     const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -90,8 +91,11 @@ export class AuthService {
   /** 회원가입 (아이디 = 이메일). 인증번호 확인 후 가입 */
   async signup(input: SignupWithCodeInput) {
     await this.assertAccountAvailable(input.email);
+    await validateConsent(this.prisma, input.termsIds, true);
     await this.verification.verify(input.email, 'SIGNUP', input.emailCode, null);
     const user = await this.prisma.$transaction(async (tx) => {
+      await lockTerms(tx);
+      const accepted = await validateConsent(tx, input.termsIds, true);
       const created = await tx.user.create({
         data: {
           username: input.email,
@@ -102,6 +106,7 @@ export class AuthService {
           passwordHash: await bcrypt.hash(input.password, 10),
         },
       });
+      await tx.termsAgreement.createMany({ data: accepted.map((terms) => ({ termsId: terms.id, userId: created.id })), skipDuplicates: true });
       await this.audit.log(tx, { actorId: created.id, action: 'auth.signup', targetType: 'User', targetId: created.id });
       return created;
     });

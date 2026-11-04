@@ -5,6 +5,7 @@ import { ErrorCode } from '@weplay/shared';
 import { AppError } from './app-error';
 import { IS_PUBLIC } from './decorators';
 import { PrismaService } from './prisma.service';
+import { consentRequired, effectiveTerms } from './terms-policy';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -12,7 +13,7 @@ export class JwtAuthGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly jwt: JwtService,
     private readonly prisma: PrismaService,
-  ) {}
+  ) { }
 
   async canActivate(ctx: ExecutionContext) {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC, [ctx.getHandler(), ctx.getClass()]);
@@ -39,6 +40,13 @@ export class JwtAuthGuard implements CanActivate {
     const url: string = req.originalUrl ?? req.url ?? '';
     if (user.status !== 'ACTIVE' && !/^\/api\/v1\/(me(\?|$)|auth\/)/.test(url)) {
       throw new AppError(ErrorCode.USER_SUSPENDED, '이용할 수 없는 계정입니다', HttpStatus.FORBIDDEN);
+    }
+    if (user.platformRole !== 'MASTER' && !/^\/api\/v1\/(me(?:\/terms(?:\/|\?|$)|\?|$)|auth\/)/.test(url)) {
+      const required = (await effectiveTerms(this.prisma)).filter((row) => row.required || row.type === 'SERVICE');
+      if (required.length) {
+        const agreements = await this.prisma.termsAgreement.count({ where: { userId: user.id, termsId: { in: required.map((row) => row.id) } } });
+        if (agreements !== required.length) throw consentRequired();
+      }
     }
     req.user = user;
     return true;

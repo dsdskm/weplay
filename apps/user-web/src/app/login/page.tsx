@@ -2,16 +2,29 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { GoogleButton } from '@/components/google-button';
 import { Button, Card, ErrorText, Input, Logo } from '@/components/ui';
 import { api, errorMessage, tokenStore } from '@/lib/api';
+
+const SAVED_USERNAME_KEY = 'weplay.savedUsername';
 
 export default function LoginPage() {
   const router = useRouter();
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ username: '', password: '' });
+  const [rememberUsername, setRememberUsername] = useState(false);
+
+  useEffect(() => {
+    try {
+      const username = localStorage.getItem(SAVED_USERNAME_KEY);
+      if (username) {
+        setForm((current) => ({ ...current, username }));
+        setRememberUsername(true);
+      }
+    } catch { }
+  }, []);
 
   const finish = useCallback(
     async (path: string, body: unknown) => {
@@ -19,6 +32,12 @@ export default function LoginPage() {
       setError(undefined);
       try {
         const res = await api<{ accessToken: string }>(path, { body });
+        if (path === '/auth/login') {
+          try {
+            if (rememberUsername) localStorage.setItem(SAVED_USERNAME_KEY, form.username.trim());
+            else localStorage.removeItem(SAVED_USERNAME_KEY);
+          } catch { }
+        }
         tokenStore.set(res.accessToken);
         router.replace('/');
       } catch (e) {
@@ -27,7 +46,7 @@ export default function LoginPage() {
         setBusy(false);
       }
     },
-    [router],
+    [router, rememberUsername, form.username],
   );
 
   const onGoogle = useCallback((credential: string) => finish('/auth/google', { credential }), [finish]);
@@ -56,6 +75,20 @@ export default function LoginPage() {
             onChange={(e) => setForm({ ...form, password: e.target.value })}
             required
           />
+          <label className="flex items-center gap-2 py-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              checked={rememberUsername}
+              onChange={(event) => {
+                setRememberUsername(event.target.checked);
+                if (!event.target.checked) {
+                  try { localStorage.removeItem(SAVED_USERNAME_KEY); } catch { }
+                }
+              }}
+              className="h-4 w-4 accent-brand-600"
+            />
+            아이디 저장
+          </label>
           <Button type="submit" className="w-full" disabled={busy}>
             로그인
           </Button>

@@ -3,8 +3,11 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Button, Card, ErrorText, Input, Logo } from '@/components/ui';
+import { LegalDocumentBody, type LegalDocument } from '@/components/legal-document';
 import { api, errorMessage, tokenStore } from '@/lib/api';
+import { hasRequiredConsent, selectedTermsIds } from '@/lib/legal-consent';
 
 export default function SignupPage() {
   const router = useRouter();
@@ -12,6 +15,10 @@ export default function SignupPage() {
   const [info, setInfo] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [codeSent, setCodeSent] = useState(false);
+  const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [expanded, setExpanded] = useState<string>();
+  const terms = useQuery({ queryKey: ['terms', 'signup'], queryFn: () => api<LegalDocument[]>('/terms'), refetchOnWindowFocus: true, refetchInterval: 60_000 });
+  const canAgree = terms.isSuccess && !terms.isFetching && hasRequiredConsent(terms.data, checked);
   const [form, setForm] = useState({ email: '', emailCode: '', name: '', birthDate: '', phone: '', password: '', passwordConfirm: '' });
 
   const sendCode = async () => {
@@ -41,6 +48,7 @@ export default function SignupPage() {
           onSubmit={async (e) => {
             e.preventDefault();
             if (form.password !== form.passwordConfirm) return setError('비밀번호가 일치하지 않습니다');
+            if (!canAgree) return setError('현재 필수 약관을 확인하고 동의해 주세요.');
             setBusy(true);
             setError(undefined);
             try {
@@ -52,12 +60,15 @@ export default function SignupPage() {
                   password: form.password,
                   birthDate: form.birthDate || null,
                   phone: form.phone || null,
+                  termsIds: selectedTermsIds(terms.data ?? [], checked),
                 },
               });
               tokenStore.set(res.accessToken);
               router.replace('/');
             } catch (err) {
               setError(errorMessage(err));
+              setChecked({});
+              await terms.refetch();
             } finally {
               setBusy(false);
             }
@@ -90,7 +101,18 @@ export default function SignupPage() {
           <Input placeholder="전화번호 (선택)" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
           <Input type="password" placeholder="비밀번호 (8자 이상)" autoComplete="new-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
           <Input type="password" placeholder="비밀번호 확인" autoComplete="new-password" value={form.passwordConfirm} onChange={(e) => setForm({ ...form, passwordConfirm: e.target.value })} required />
-          <Button type="submit" className="w-full" disabled={busy || !codeSent}>
+          <fieldset className="space-y-3 py-3" disabled={busy}>
+            <legend className="text-sm font-semibold">약관 동의</legend>
+            {terms.isPending && <p role="status" className="text-sm text-slate-500">약관을 불러오는 중입니다.</p>}
+            {terms.isError && <p role="alert" className="text-sm text-rose-600">약관을 불러오지 못했습니다. <button type="button" className="underline" onClick={() => terms.refetch()}>다시 시도</button></p>}
+            {terms.data?.length === 0 && <p className="text-sm text-slate-500">현재 게시된 약관이 없습니다.</p>}
+            {terms.data?.map((document) => <div key={document.id} className="space-y-2">
+              <label className="flex items-start gap-2 text-sm"><input type="checkbox" required={document.required} checked={!!checked[document.id]} onChange={(event) => setChecked((previous) => ({ ...previous, [document.id]: event.target.checked }))} className="mt-1 h-4 w-4 shrink-0" /><span>[{document.required ? '필수' : '선택'}] {document.title} v{document.version}</span></label>
+              <button type="button" className="text-xs text-brand-700 underline" onClick={() => setExpanded(expanded === document.id ? undefined : document.id)}>{expanded === document.id ? '접기' : '전문 및 첨부 문서 읽기'}</button>
+              {expanded === document.id && <LegalDocumentBody document={document} />}
+            </div>)}
+          </fieldset>
+          <Button type="submit" className="w-full" disabled={busy || !codeSent || !canAgree}>
             가입하기
           </Button>
           <p className="text-center text-xs text-slate-500">

@@ -1,9 +1,10 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { randomBytes } from 'crypto';
-import { mkdirSync, writeFileSync } from 'fs';
-import { join, resolve } from 'path';
 import { ErrorCode } from '@weplay/shared';
 import { AppError } from '../../common/app-error';
+import { logStorageError, maxUploadBytes, mediaTypeOf, UPLOAD_TYPES, UploadExtension, writeUpload } from './upload-storage';
+
+export { maxUploadBytes, uploadDir, readUploadBuffer, parseUploadUrl } from './upload-storage';
 
 export interface UploadedFileLike {
   originalname: string;
@@ -12,40 +13,64 @@ export interface UploadedFileLike {
   buffer: Buffer;
 }
 
-const IMAGE_TYPES: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp' };
-const VIDEO_TYPES: Record<string, string> = { 'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov' };
+const MIME_ALIASES: Partial<Record<UploadExtension, string[]>> = {
+  zip: ['application/x-zip-compressed'],
+  csv: ['application/vnd.ms-excel', 'text/plain'],
+  hwp: ['application/haansofthwp', 'application/vnd.hancom.hwp', 'application/octet-stream'],
+  hwpx: ['application/hwp+zip', 'application/haansofthwpx', 'application/octet-stream', 'application/zip'],
+};
 
-/** 업로드 저장 폴더 (환경변수 UPLOAD_DIR, 기본 apps/server/uploads) */
-export const uploadDir = () => resolve(process.env.UPLOAD_DIR ?? join(process.cwd(), 'uploads'));
-export const maxUploadBytes = () => Number(process.env.MAX_UPLOAD_MB ?? 30) * 1024 * 1024;
+export function sanitizeUploadName(value: string) {
+  return value.split(/[\\/]/).pop()!.replace(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g, '').trim().slice(0, 180) || 'attachment';
+}
 
-/** 사진·영상 파일 저장. 파일명은 추측할 수 없는 랜덤 값이고 /uploads/<파일명> 으로 제공 */
+function bad(message: string) {
+  return new AppError(ErrorCode.VALIDATION_FAILED, message, HttpStatus.BAD_REQUEST);
+}
+
+export function validateUpload(file: UploadedFileLike | undefined, attachments = false, allowVideo = true, allowHtml = false) {
+  if (!file) throw bad('파일을 선택하세요');
+  const name = sanitizeUploadName(file.originalname);
+  const extension = name.split('.').pop()?.toLowerCase() ?? '';
+  if (!Object.hasOwn(UPLOAD_TYPES, extension)) throw bad('지원하지 않는 파일 형식이에요');
+  const ext = extension as UploadExtension;
+  if ((ext === 'html' || ext === 'htm') && !allowHtml) throw bad('HTML 문서는 관리자만 업로드할 수 있어요');
+  const mediaType = mediaTypeOf(ext);
+  const mimeType = UPLOAD_TYPES[ext];
+  const suppliedMime = file.mimetype.toLowerCase();
+  if (suppliedMime !== mimeType && !MIME_ALIASES[ext]?.includes(suppliedMime)) throw bad('파일 확장자와 형식이 일치하지 않아요');
+  if ((!attachments && mediaType === 'FILE') || (!allowVideo && mediaType === 'VIDEO')) throw bad('허용되지 않는 파일 형식이에요');
+  if (!Number.isSafeInteger(file.size) || file.size <= 0 || file.size !== file.buffer.length || file.size > maxUploadBytes()) {
+    throw bad(`빈 파일은 올릴 수 없으며 파일은 ${Math.round(maxUploadBytes() / 1024 / 1024)}MB 이하만 올릴 수 있어요`);
+  }
+  return { name, ext: ext === 'jpeg' ? 'jpg' as const : ext, mimeType, mediaType };
+}
+
+async function persist(buffer: Buffer, ext: UploadExtension) {
+  const name = `${randomBytes(16).toString('hex')}.${ext}`;
+  try {
+    await writeUpload(name, buffer);
+  } catch (error) {
+    logStorageError('write', error);
+    throw new AppError(ErrorCode.VALIDATION_FAILED, '파일 저장에 실패했어요. 잠시 후 다시 시도하고, 계속되면 관리자에게 저장소 설정과 권한 확인을 요청해 주세요.', HttpStatus.SERVICE_UNAVAILABLE);
+  }
+  return { url: `/uploads/${name}`, mediaType: mediaTypeOf(ext) };
+}
+
 @Injectable()
 export class UploadsService {
-  save(file: UploadedFileLike | undefined, allowVideo = true) {
-    if (!file) throw new AppError(ErrorCode.VALIDATION_FAILED, '파일을 선택하세요', HttpStatus.BAD_REQUEST);
-    const image = IMAGE_TYPES[file.mimetype];
-    const video = allowVideo ? VIDEO_TYPES[file.mimetype] : undefined;
-    const ext = image ?? video;
-    if (!ext) {
-      throw new AppError(ErrorCode.VALIDATION_FAILED, allowVideo ? '사진(JPG·PNG·GIF·WEBP)이나 영상(MP4·WEBM·MOV)만 올릴 수 있어요' : '사진(JPG·PNG·GIF·WEBP)만 올릴 수 있어요', HttpStatus.BAD_REQUEST);
-    }
-    if (file.size > maxUploadBytes()) {
-      throw new AppError(ErrorCode.VALIDATION_FAILED, `파일은 ${Math.round(maxUploadBytes() / 1024 / 1024)}MB 이하만 올릴 수 있어요`, HttpStatus.BAD_REQUEST);
-    }
-    const dir = uploadDir();
-    mkdirSync(dir, { recursive: true });
-    const name = `${randomBytes(16).toString('hex')}.${ext}`;
-    writeFileSync(join(dir, name), file.buffer);
-    return { url: `/uploads/${name}`, mediaType: image ? ('IMAGE' as const) : ('VIDEO' as const) };
+  async save(file: UploadedFileLike | undefined, allowVideo = true) {
+    const validated = validateUpload(file, false, allowVideo);
+    return { ...await persist(file!.buffer, validated.ext), name: validated.name, size: file!.size, mimeType: validated.mimeType };
+  }
+
+  async saveAttachment(file: UploadedFileLike | undefined, allowHtml = false) {
+    const validated = validateUpload(file, true, true, allowHtml);
+    return { ...await persist(file!.buffer, validated.ext), name: validated.name, size: file!.size, mimeType: validated.mimeType };
   }
 }
 
-/** 서버가 만든 파일(AI 생성 그림·변환 결과 등) 저장. 주소 형식은 사용자 업로드와 같음 */
-export function saveBuffer(buffer: Buffer, ext: 'png' | 'jpg' | 'webp' | 'mp4' | 'webm') {
-  const dir = uploadDir();
-  mkdirSync(dir, { recursive: true });
-  const name = `${randomBytes(16).toString('hex')}.${ext}`;
-  writeFileSync(join(dir, name), buffer);
-  return { url: `/uploads/${name}`, mediaType: ext === 'mp4' || ext === 'webm' ? ('VIDEO' as const) : ('IMAGE' as const) };
+export async function saveBuffer(buffer: Buffer, ext: 'png' | 'jpg' | 'webp' | 'mp4' | 'webm') {
+  if (!buffer.length || buffer.length > maxUploadBytes()) throw bad('생성된 파일이 비어 있거나 크기 제한을 초과했어요');
+  return persist(buffer, ext);
 }

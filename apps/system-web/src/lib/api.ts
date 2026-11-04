@@ -1,3 +1,5 @@
+import { attachmentSchema } from '@weplay/shared';
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
 const TOKEN_KEY = 'wp_system_token';
 
@@ -48,6 +50,21 @@ export async function uploadAdminImage(file: File) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, data?.error?.code ?? 'UNKNOWN', data?.error?.message ?? '업로드에 실패했습니다');
   return data as { url: string; mediaType: 'IMAGE' | 'VIDEO' };
+}
+
+export async function uploadAdminAttachment(file: File) {
+  const token = tokenStore.get();
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${API_URL}/admin/uploads/attachments`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: form });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    if (res.status === 401) tokenStore.clear();
+    throw new ApiError(res.status, data?.error?.code ?? 'UNKNOWN', data?.error?.message ?? '업로드에 실패했습니다');
+  }
+  const parsed = attachmentSchema.safeParse(data);
+  if (!parsed.success) throw new Error('첨부 파일 응답이 올바르지 않습니다');
+  return parsed.data;
 }
 
 /** 업로드 주소를 화면에 보여 줄 전체 주소로 */

@@ -135,7 +135,63 @@ async function main() {
     else console.log('[턴제 흐름] 데모 계정 2명 이상이 필요해서 건너뜀');
   }
 
+  if (process.env.WEPLAY_ATTACHMENTS === '1') await attachmentFlows(G, token);
+
   return finish();
+}
+
+async function attachmentFlows(G, token) {
+  const first = { url: '/uploads/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.pdf', name: 'smoke.pdf', size: 12, mimeType: 'application/pdf', mediaType: 'FILE' };
+  const replacement = { url: '/uploads/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.png', name: 'smoke.png', size: 24, mimeType: 'image/png', mediaType: 'IMAGE' };
+  const content = { title: 'Attachment contract smoke', body: 'Temporary attachment contract smoke' };
+  const request = (method, path, body) => call(method, path, { token, body });
+  const matches = (actual, expected) => JSON.stringify(actual) === JSON.stringify(expected);
+  const exercise = async (collection, fields = {}, comments = false, children) => {
+    const body = { ...content, ...fields };
+    const created = await request('POST', collection, { ...body, attachments: [first] });
+    check(`attachments create ${collection}`, [200, 201].includes(created.status) && !!created.data.id, `(got ${created.status})`);
+    if (!created.data.id) return;
+    const path = `${collection}/${created.data.id}`;
+    const read = async () => {
+      const result = await request('GET', comments ? `${collection}?pageSize=100` : path);
+      return comments ? result.data.items?.find((item) => item.id === created.data.id) : result.data;
+    };
+    try {
+      check(`attachments read ${collection}`, matches((await read())?.attachments, [first]));
+      const listed = await request('GET', `${collection}?pageSize=100${fields.teamId ? `&teamId=${fields.teamId}` : ''}`);
+      check(`attachments list ${collection}`, matches(listed.data.items?.find((item) => item.id === created.data.id)?.attachments, [first]));
+      const omitted = await request('PATCH', path, body);
+      check(`attachments omitted preserves ${collection}`, omitted.status === 200 && matches((await read())?.attachments, [first]));
+      const edited = await request('PATCH', path, { ...body, attachments: [replacement] });
+      check(`attachments edit ${collection}`, edited.status === 200 && matches((await read())?.attachments, [replacement]));
+      const unsafe = await request('PATCH', path, { ...body, attachments: [{ ...first, url: 'https://example.com/file.pdf' }] });
+      check(`attachments unsafe URL rejected ${collection}`, unsafe.status === 400);
+      const excessive = await request('PATCH', path, { ...body, attachments: Array(6).fill(first) });
+      check(`attachments max five ${collection}`, excessive.status === 400);
+      const cleared = await request('PATCH', path, { ...body, attachments: [] });
+      check(`attachments clear ${collection}`, cleared.status === 200 && matches((await read())?.attachments, []));
+      if (children) await children(path);
+    } finally {
+      const deleted = await request('DELETE', path);
+      check(`attachments cleanup ${collection}`, deleted.status === 200);
+    }
+  };
+
+  console.log('[Attachment persistence contracts (opt-in data changes; synthetic uploaded paths)]');
+  const boards = await request('GET', `${G}/board/boards`);
+  if (boards.data.enabled && boards.data.boards?.length) {
+    const teamId = boards.data.boards[0].teamId;
+    await exercise(`${G}/board/posts`, { teamId }, false, async (path) => {
+      const detail = await request('GET', path);
+      if (detail.data.commentsEnabled) await exercise(`${path}/comments`, {}, true);
+    });
+  }
+  const suggestions = await request('GET', `${G}/suggestions`);
+  if (suggestions.data.enabled) await exercise(`${G}/suggestions`);
+  const notices = await request('GET', `${G}/notices`);
+  if (notices.data.canWrite) await exercise(`${G}/notices`, { teamId: notices.data.teams?.[0]?.id ?? null });
+  const system = await request('GET', '/admin/system-notices');
+  if (system.status === 200) await exercise('/admin/system-notices');
 }
 
 

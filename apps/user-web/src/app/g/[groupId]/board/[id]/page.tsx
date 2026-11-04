@@ -4,10 +4,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { readAttachments, type Attachment } from '@weplay/shared';
+import { AttachmentList, AttachmentPicker } from '@/components/attachments';
 import { Badge, Button, Card, ErrorText, Input } from '@/components/ui';
 import { Pager } from '@/components/pager';
 import { useDialog } from '@/components/confirm-dialog';
-import { api, errorMessage } from '@/lib/api';
+import { api, errorMessage, uploadAttachment } from '@/lib/api';
 import { useGroupId } from '@/lib/hooks';
 import type { Paginated } from '@/lib/types';
 
@@ -15,6 +17,7 @@ interface PostDetail {
   id: string;
   title: string;
   body: string;
+  attachments?: Attachment[];
   author: { name: string } | null;
   pinned: boolean;
   canEdit: boolean;
@@ -27,6 +30,7 @@ interface PostDetail {
 interface Comment {
   id: string;
   body: string;
+  attachments?: Attachment[];
   author: { name: string };
   createdAt: string;
   canEdit: boolean;
@@ -48,6 +52,13 @@ export default function BoardPostPage() {
   const [editId, setEditId] = useState<string>();
   const [editText, setEditText] = useState('');
   const [error, setError] = useState<string>();
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [commentAttachments, setCommentAttachments] = useState<Attachment[]>([]);
+  const [editAttachments, setEditAttachments] = useState<Attachment[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [commentUploading, setCommentUploading] = useState(false);
+  const [editUploading, setEditUploading] = useState(false);
+  const upload = (file: File) => uploadAttachment(groupId, file);
 
   const base = `/groups/${groupId}/board/posts/${id}`;
   const { data: post } = useQuery({ queryKey: ['group', groupId, 'board', 'post', id], queryFn: () => api<PostDetail>(base) });
@@ -63,7 +74,7 @@ export default function BoardPostPage() {
   };
 
   const update = useMutation({
-    mutationFn: () => api(base, { method: 'PATCH', body: { title: title.trim(), body: body.trim() } }),
+    mutationFn: () => api(base, { method: 'PATCH', body: { title: title.trim(), body: body.trim(), attachments } }),
     onSuccess: () => {
       setEditing(false);
       ok();
@@ -88,15 +99,16 @@ export default function BoardPostPage() {
     onError,
   });
   const addComment = useMutation({
-    mutationFn: () => api(`${base}/comments`, { body: { body: text.trim() } }),
+    mutationFn: () => api(`${base}/comments`, { body: { body: text.trim(), attachments: commentAttachments } }),
     onSuccess: () => {
       setText('');
+      setCommentAttachments([]);
       ok();
     },
     onError,
   });
   const editComment = useMutation({
-    mutationFn: () => api(`${base}/comments/${editId}`, { method: 'PATCH', body: { body: editText.trim() } }),
+    mutationFn: () => api(`${base}/comments/${editId}`, { method: 'PATCH', body: { body: editText.trim(), attachments: editAttachments } }),
     onSuccess: () => {
       setEditId(undefined);
       ok();
@@ -118,11 +130,12 @@ export default function BoardPostPage() {
           <>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={100} />
             <textarea className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" rows={8} value={body} onChange={(e) => setBody(e.target.value)} />
+            <AttachmentPicker value={attachments} onChange={setAttachments} upload={upload} onUploadingChange={setUploading} disabled={update.isPending} />
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setEditing(false)}>
+              <Button variant="ghost" disabled={uploading || update.isPending} onClick={() => setEditing(false)}>
                 취소
               </Button>
-              <Button onClick={() => update.mutate()} disabled={!title.trim() || !body.trim()}>
+              <Button onClick={() => update.mutate()} disabled={!title.trim() || !body.trim() || uploading || update.isPending}>
                 저장
               </Button>
             </div>
@@ -138,6 +151,7 @@ export default function BoardPostPage() {
               {post.updatedAt !== post.createdAt && ' (수정됨)'}
             </p>
             <p className="whitespace-pre-wrap text-sm leading-relaxed">{post.body}</p>
+            <AttachmentList attachments={post.attachments} />
             <div className="flex flex-wrap justify-end gap-2">
               {post.canModerate && (
                 <>
@@ -160,6 +174,7 @@ export default function BoardPostPage() {
                   onClick={() => {
                     setTitle(post.title);
                     setBody(post.body);
+                    setAttachments(readAttachments(post.attachments));
                     setEditing(true);
                   }}
                 >
@@ -193,9 +208,11 @@ export default function BoardPostPage() {
                   {c.canEdit && editId !== c.id && (
                     <button
                       type="button"
+                      disabled={editUploading || editComment.isPending}
                       onClick={() => {
                         setEditId(c.id);
                         setEditText(c.body);
+                        setEditAttachments(readAttachments(c.attachments));
                       }}
                     >
                       수정
@@ -215,35 +232,40 @@ export default function BoardPostPage() {
               </p>
               {editId === c.id ? (
                 <form
-                  className="flex gap-2"
+                  className="flex flex-wrap gap-2"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    if (editText.trim() && !editComment.isPending) editComment.mutate();
+                    if (editText.trim() && !editComment.isPending && !editUploading) editComment.mutate();
                   }}
                 >
                   <Input value={editText} onChange={(e) => setEditText(e.target.value)} maxLength={1000} />
-                  <Button type="submit">저장</Button>
-                  <Button type="button" variant="ghost" onClick={() => setEditId(undefined)}>
+                  <Button type="submit" disabled={!editText.trim() || editUploading || editComment.isPending}>저장</Button>
+                  <Button type="button" variant="ghost" disabled={editUploading || editComment.isPending} onClick={() => setEditId(undefined)}>
                     취소
                   </Button>
+                  <div className="w-full"><AttachmentPicker value={editAttachments} onChange={setEditAttachments} upload={upload} onUploadingChange={setEditUploading} disabled={editComment.isPending} /></div>
                 </form>
               ) : (
-                <p className="whitespace-pre-wrap">{c.body}</p>
+                <>
+                  <p className="whitespace-pre-wrap">{c.body}</p>
+                  <AttachmentList attachments={c.attachments} />
+                </>
               )}
             </div>
           ))}
           {comments && <Pager page={page} pages={Math.max(1, Math.ceil(comments.total / comments.pageSize))} setPage={setPage} total={comments.total} />}
           <form
-            className="flex gap-2"
+            className="flex flex-wrap gap-2"
             onSubmit={(e) => {
               e.preventDefault();
-              if (text.trim() && !addComment.isPending) addComment.mutate();
+              if (text.trim() && !addComment.isPending && !commentUploading) addComment.mutate();
             }}
           >
             <Input placeholder="댓글을 입력하세요" value={text} onChange={(e) => setText(e.target.value)} maxLength={1000} />
-            <Button type="submit" disabled={!text.trim() || addComment.isPending}>
+            <Button type="submit" disabled={!text.trim() || addComment.isPending || commentUploading}>
               등록
             </Button>
+            <div className="w-full"><AttachmentPicker value={commentAttachments} onChange={setCommentAttachments} upload={upload} onUploadingChange={setCommentUploading} disabled={addComment.isPending} /></div>
           </form>
         </Card>
       )}

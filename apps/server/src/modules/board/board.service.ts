@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { z } from 'zod';
-import { ErrorCode, FeatureKey } from '@weplay/shared';
+import { attachmentSizeLimit, createAttachmentInputSchema, readAttachments, ErrorCode, FeatureKey } from '@weplay/shared';
 import { AppError } from '../../common/app-error';
 import { AuditService } from '../../common/audit.service';
 import { AuthUser } from '../../common/decorators';
@@ -11,8 +11,9 @@ import { FeaturesService } from '../features/features.service';
 
 const FEATURE = FeatureKey.BOARD;
 const userSelect = { id: true, name: true, avatarUrl: true } as const;
+const attachmentInputSchema = createAttachmentInputSchema(attachmentSizeLimit(process.env.MAX_UPLOAD_MB));
 
-export const createPostSchema = z.object({
+export const createPostSchema = attachmentInputSchema.extend({
   teamId: z.string().min(1).nullable().optional(),
   title: z.string().trim().min(1).max(100),
   body: z.string().trim().min(1).max(10000),
@@ -20,13 +21,13 @@ export const createPostSchema = z.object({
 });
 export type CreatePostInput = z.infer<typeof createPostSchema>;
 
-export const updatePostSchema = z.object({
+export const updatePostSchema = attachmentInputSchema.extend({
   title: z.string().trim().min(1).max(100),
   body: z.string().trim().min(1).max(10000),
 });
 export type UpdatePostInput = z.infer<typeof updatePostSchema>;
 
-export const commentSchema = z.object({ body: z.string().trim().min(1, '댓글을 입력하세요').max(1000) });
+export const commentSchema = attachmentInputSchema.extend({ body: z.string().trim().min(1, '댓글을 입력하세요').max(1000) });
 export type CommentInput = z.infer<typeof commentSchema>;
 
 @Injectable()
@@ -36,7 +37,7 @@ export class BoardService {
     private readonly audit: AuditService,
     private readonly features: FeaturesService,
     private readonly settings: FeatureSettingsService,
-  ) {}
+  ) { }
 
   /** 내가 볼 수 있는 게시판: 그룹 전체(설정 시) + 내 팀 (그룹 ADMIN은 모든 팀) */
   async boards(groupId: string, viewer: AuthUser, isGroupAdmin: boolean) {
@@ -93,6 +94,7 @@ export class BoardService {
         id: p.id,
         title: p.title,
         excerpt: p.body.slice(0, 80),
+        attachments: readAttachments(p.attachments),
         author: p.anonymous ? null : p.author,
         mine: p.authorId === viewer.id,
         pinned: p.pinned,
@@ -112,7 +114,7 @@ export class BoardService {
     if (input.body.length > Number(cfg.maxPostLength)) throw new AppError(ErrorCode.VALIDATION_FAILED, `본문은 ${cfg.maxPostLength}자까지 쓸 수 있어요`, HttpStatus.BAD_REQUEST);
     if (input.anonymous && !cfg.anonymousAllowed) throw new AppError(ErrorCode.VALIDATION_FAILED, '익명으로는 쓸 수 없어요', HttpStatus.BAD_REQUEST);
     const row = await this.prisma.boardPost.create({
-      data: { groupId, teamId, authorId: actor.id, title: input.title, body: input.body, anonymous: !!input.anonymous },
+      data: { groupId, teamId, authorId: actor.id, title: input.title, body: input.body, anonymous: !!input.anonymous, attachments: input.attachments },
     });
     return { id: row.id };
   }
@@ -134,6 +136,7 @@ export class BoardService {
       teamId: post.teamId,
       title: post.title,
       body: post.body,
+      attachments: readAttachments(post.attachments),
       author: post.anonymous ? null : post.author,
       mine: post.authorId === viewer.id,
       pinned: post.pinned,
@@ -154,7 +157,7 @@ export class BoardService {
       this.prisma.boardComment.count({ where: { postId: id } }),
     ]);
     return paged(
-      rows.map((c) => ({ id: c.id, body: c.body, author: c.author, createdAt: c.createdAt, mine: c.authorId === viewer.id, canEdit: c.authorId === viewer.id, canDelete: c.authorId === viewer.id || isManager })),
+      rows.map((c) => ({ id: c.id, body: c.body, attachments: readAttachments(c.attachments), author: c.author, createdAt: c.createdAt, mine: c.authorId === viewer.id, canEdit: c.authorId === viewer.id, canDelete: c.authorId === viewer.id || isManager })),
       total,
       q,
     );
@@ -165,7 +168,7 @@ export class BoardService {
     if (post.authorId !== actor.id) throw AppError.forbidden('본인 글만 고칠 수 있어요');
     const cfg = await this.settings.get(groupId, FEATURE);
     if (input.body.length > Number(cfg.maxPostLength)) throw new AppError(ErrorCode.VALIDATION_FAILED, `본문은 ${cfg.maxPostLength}자까지 쓸 수 있어요`, HttpStatus.BAD_REQUEST);
-    await this.prisma.boardPost.update({ where: { id }, data: { title: input.title, body: input.body } });
+    await this.prisma.boardPost.update({ where: { id }, data: { title: input.title, body: input.body, attachments: input.attachments } });
     return { ok: true };
   }
 
@@ -201,7 +204,7 @@ export class BoardService {
     await this.postFor(groupId, actor, isGroupAdmin, id);
     const cfg = await this.settings.get(groupId, FEATURE);
     if (!cfg.commentsEnabled) throw AppError.forbidden('댓글을 쓸 수 없는 게시판이에요');
-    const row = await this.prisma.boardComment.create({ data: { postId: id, authorId: actor.id, body: input.body } });
+    const row = await this.prisma.boardComment.create({ data: { postId: id, authorId: actor.id, body: input.body, attachments: input.attachments } });
     return { id: row.id };
   }
 
@@ -209,7 +212,7 @@ export class BoardService {
     const c = await this.prisma.boardComment.findFirst({ where: { id: commentId, postId: id, post: { groupId } } });
     if (!c) throw AppError.notFound('댓글을 찾을 수 없어요');
     if (c.authorId !== actor.id) throw AppError.forbidden('본인 댓글만 고칠 수 있어요');
-    await this.prisma.boardComment.update({ where: { id: commentId }, data: { body: input.body } });
+    await this.prisma.boardComment.update({ where: { id: commentId }, data: { body: input.body, attachments: input.attachments } });
     return { ok: true };
   }
 

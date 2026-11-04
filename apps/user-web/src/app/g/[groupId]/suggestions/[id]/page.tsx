@@ -5,9 +5,11 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { labelOf, SUGGESTION_CATEGORIES, SUGGESTION_STATUS } from '@weplay/shared';
-import { Badge, Button, Card, cn, ErrorText } from '@/components/ui';
+import { readAttachments, type Attachment } from '@weplay/shared';
+import { AttachmentList, AttachmentPicker } from '@/components/attachments';
+import { Badge, Button, Card, cn, ErrorText, Input } from '@/components/ui';
 import { useDialog } from '@/components/confirm-dialog';
-import { api, errorMessage } from '@/lib/api';
+import { api, errorMessage, uploadAttachment } from '@/lib/api';
 import { fmtDateTime } from '@/lib/format';
 import { useGroupId } from '@/lib/hooks';
 
@@ -15,6 +17,8 @@ interface Detail {
   id: string;
   title: string;
   body: string;
+  attachments?: Attachment[];
+  canEdit: boolean;
   category: string;
   status: string;
   author: { name: string } | null;
@@ -41,6 +45,10 @@ export default function SuggestionDetailPage() {
   const [status, setStatus] = useState('RECEIVED');
   const [answer, setAnswer] = useState('');
   const [error, setError] = useState<string>();
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ title: '', body: '', category: 'ETC' });
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [uploading, setUploading] = useState(false);
   const { data: s } = useQuery({ queryKey: ['group', groupId, 'suggestions', 'detail', id], queryFn: () => api<Detail>(`/groups/${groupId}/suggestions/${id}`) });
   useEffect(() => {
     if (s) {
@@ -50,6 +58,15 @@ export default function SuggestionDetailPage() {
   }, [s]);
   const refresh = () => qc.invalidateQueries({ queryKey: ['group', groupId, 'suggestions'] });
   const vote = useMutation({ mutationFn: () => api(`/groups/${groupId}/suggestions/${id}/vote`, { body: {} }), onSuccess: refresh });
+  const update = useMutation({
+    mutationFn: () => api(`/groups/${groupId}/suggestions/${id}`, { method: 'PATCH', body: { ...form, attachments } }),
+    onSuccess: () => {
+      setEditing(false);
+      setError(undefined);
+      refresh();
+    },
+    onError: (reason) => setError(errorMessage(reason)),
+  });
   const save = useMutation({
     mutationFn: () => api(`/groups/${groupId}/suggestions/${id}/answer`, { method: 'PUT', body: { status, answer: answer.trim() || null } }),
     onSuccess: () => {
@@ -80,12 +97,30 @@ export default function SuggestionDetailPage() {
           <Badge tone="slate">{labelOf(SUGGESTION_CATEGORIES, s.category)}</Badge>
           <Badge tone={(SUGGESTION_STATUS.find((x) => x.key === s.status)?.tone ?? 'slate') as 'slate'}>{labelOf(SUGGESTION_STATUS, s.status)}</Badge>
         </div>
-        <h1 className="text-2xl font-black">{s.title}</h1>
+        {editing ? (
+          <div className="space-y-3">
+            <Input aria-label="건의 제목" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} maxLength={100} />
+            <select aria-label="건의 분류" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })}>
+              {SUGGESTION_CATEGORIES.map((category) => <option key={category.key} value={category.key}>{category.name}</option>)}
+            </select>
+            <textarea aria-label="건의 내용" className="min-h-36 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" value={form.body} onChange={(event) => setForm({ ...form, body: event.target.value })} maxLength={5000} />
+            <AttachmentPicker value={attachments} onChange={setAttachments} upload={(file) => uploadAttachment(groupId, file)} onUploadingChange={setUploading} disabled={update.isPending} />
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" disabled={uploading || update.isPending} onClick={() => setEditing(false)}>취소</Button>
+              <Button disabled={uploading || update.isPending || !form.title.trim() || !form.body.trim()} onClick={() => update.mutate()}>저장</Button>
+            </div>
+          </div>
+        ) : <h1 className="text-2xl font-black">{s.title}</h1>}
         <p className="text-sm text-slate-400">
           {s.author ? s.author.name : '익명'}
           {s.mine && ' (나)'} · {fmtDateTime(s.createdAt)}
         </p>
-        <p className="whitespace-pre-wrap leading-relaxed">{s.body}</p>
+        {!editing && <><p className="whitespace-pre-wrap leading-relaxed">{s.body}</p><AttachmentList attachments={s.attachments} /></>}
+        {s.canEdit && !editing && <div className="flex justify-end"><Button variant="secondary" onClick={() => {
+          setForm({ title: s.title, body: s.body, category: s.category });
+          setAttachments(readAttachments(s.attachments));
+          setEditing(true);
+        }}>수정</Button></div>}
 
         {/* 진행 단계 */}
         {s.status !== 'DECLINED' ? (
@@ -111,6 +146,7 @@ export default function SuggestionDetailPage() {
           {s.canDelete && (
             <Button
               variant="ghost"
+              disabled={uploading || update.isPending}
               onClick={async () => {
                 if (await confirm({ message: '건의를 삭제할까요?', danger: true })) remove.mutate();
               }}

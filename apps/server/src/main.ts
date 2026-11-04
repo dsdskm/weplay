@@ -1,9 +1,9 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
+import { RequestMethod } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { AppExceptionFilter } from './common/app-exception.filter';
-import { uploadDir } from './modules/uploads/uploads.service';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -12,9 +12,7 @@ async function bootstrap() {
     origin: (process.env.CORS_ORIGINS ?? 'http://localhost:3000,http://localhost:3001,http://localhost:3002').split(','),
     credentials: true,
   });
-  // 업로드된 사진·영상 제공 (/uploads/<랜덤 파일명>)
-  app.useStaticAssets(uploadDir(), { prefix: '/uploads' });
-  app.setGlobalPrefix('api/v1');
+  app.setGlobalPrefix('api/v1', { exclude: [{ path: 'uploads/:name', method: RequestMethod.GET }, { path: 'uploads/:name', method: RequestMethod.HEAD }] });
   app.useGlobalFilters(new AppExceptionFilter());
   const port = Number(process.env.PORT ?? process.env.SERVER_PORT ?? 4000);
   await app.listen(port);

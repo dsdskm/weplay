@@ -87,7 +87,7 @@ export class TurnGamesService {
     private readonly settings: FeatureSettingsService,
     private readonly points: PointsBadgeService,
     private readonly ai: AiService,
-  ) {}
+  ) { }
 
   private cfg(groupId: string) {
     return this.settings.get(groupId, FEATURE);
@@ -529,7 +529,7 @@ export class TurnGamesService {
     if (used >= Number(cfg.aiImageDaily)) throw bad(`오늘 AI 그림은 ${cfg.aiImageDaily}번까지 만들 수 있어요`, HttpStatus.TOO_MANY_REQUESTS);
     const png = await this.ai.generateImage(`${text.trim()}을(를) 표현한 간단한 일러스트. 글자 없이.`);
     if (!png) throw bad('AI가 그림을 만들지 못했어요. 잠시 뒤 다시 해 주세요', HttpStatus.SERVICE_UNAVAILABLE);
-    const saved = saveBuffer(png, 'png');
+    const saved = await saveBuffer(png, 'png');
     await this.prisma.$transaction([
       this.prisma.turnEntry.create({ data: { gameId: game.id, userId: actor.id, kind: 'TEXT', text: text.trim() } }),
       this.prisma.turnEntry.create({ data: { gameId: game.id, userId: actor.id, kind: 'AI_IMAGE', mediaUrl: saved.url } }),

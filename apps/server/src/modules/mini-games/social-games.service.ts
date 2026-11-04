@@ -1,6 +1,5 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { readFileSync } from 'fs';
 import { z } from 'zod';
 import {
   addDays,
@@ -18,11 +17,11 @@ import {
 import { AppError } from '../../common/app-error';
 import { AuthUser } from '../../common/decorators';
 import { PrismaService } from '../../common/prisma.service';
-import { AiService, uploadPathOf } from '../ai/ai.service';
+import { AiService } from '../ai/ai.service';
 import { FeatureSettingsService } from '../features/feature-settings.service';
 import { FeaturesService } from '../features/features.service';
 import { PointsBadgeService } from '../points-badge/points-badge.service';
-import { saveBuffer } from '../uploads/uploads.service';
+import { parseUploadUrl, readUploadBuffer, saveBuffer } from '../uploads/uploads.service';
 
 const FEATURE = FeatureKey.MINI_GAMES;
 const userSelect = { id: true, name: true, avatarUrl: true } as const;
@@ -113,7 +112,7 @@ export class SocialGamesService {
     private readonly settings: FeatureSettingsService,
     private readonly points: PointsBadgeService,
     private readonly ai: AiService,
-  ) {}
+  ) { }
 
   // ── 공통 조회 ──
 
@@ -176,15 +175,15 @@ export class SocialGamesService {
         my: mine('TELEPATHY'),
         team: team
           ? {
-              id: team.teamId,
-              name: team.team.name,
-              size: teamIds.length,
-              answered,
-              topIndex: top ? Number(top[0]) : null,
-              topCount: top?.[1] ?? 0,
-              sync: answered ? Math.round(((top?.[1] ?? 0) / answered) * 100) : 0,
-              counts: tp.options.map((_, i) => teamCounts[String(i)] ?? 0),
-            }
+            id: team.teamId,
+            name: team.team.name,
+            size: teamIds.length,
+            answered,
+            topIndex: top ? Number(top[0]) : null,
+            topCount: top?.[1] ?? 0,
+            sync: answered ? Math.round(((top?.[1] ?? 0) / answered) * 100) : 0,
+            counts: tp.options.map((_, i) => teamCounts[String(i)] ?? 0),
+          }
           : null,
       },
       balance: {
@@ -455,7 +454,7 @@ export class SocialGamesService {
     const word = pick(WORD_BANK, 1)[0];
     const png = await this.ai.generateImage(`"${word}"을(를) 떠올릴 수 있는 간단하고 밝은 일러스트. 글자와 워터마크 없이.`);
     if (!png) return { enabled: true as const, available: false, reason: 'AI가 그림을 만들지 못했어요. 잠시 뒤 다시 해 주세요' };
-    const saved = saveBuffer(png, 'png');
+    const saved = await saveBuffer(png, 'png');
     await this.prisma.gamePhoto.create({ data: { groupId, userId: viewer.id, kind: 'AI_WORD', mediaUrl: saved.url } });
     const choices = shuffle([word, ...pick(WORD_BANK.filter((w) => w !== word), 3)]);
     return { enabled: true as const, available: true, roundId: remember(word), imageUrl: saved.url, choices };
@@ -479,18 +478,18 @@ export class SocialGamesService {
     if (!input.mediaUrl.startsWith('/uploads/') || !IMG_EXT.test(input.mediaUrl)) throw bad('사진 파일만 변환할 수 있어요');
     if (!this.ai.imageEnabled) throw bad('AI 그림 기능 설정(IMAGE_API_KEY)이 필요해요');
     await this.assertImageQuota(groupId, actor.id);
-    const path = uploadPathOf(input.mediaUrl);
+    const parsed = parseUploadUrl(input.mediaUrl);
     let source: Buffer;
     try {
-      if (!path) throw new Error('bad path');
-      source = readFileSync(path);
+      if (!parsed || parsed.mediaType !== 'IMAGE') throw new Error('Invalid image URL');
+      source = await readUploadBuffer(input.mediaUrl);
     } catch {
       throw notFound('원본 사진을 찾을 수 없어요');
     }
-    const mime = input.mediaUrl.endsWith('.png') ? 'image/png' : input.mediaUrl.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
+    const mime = parsed!.mimeType;
     const out = await this.ai.editImage(source, mime, TRANSFORM_PROMPT[input.style]);
     if (!out) throw bad('AI가 사진을 바꾸지 못했어요. 잠시 뒤 다시 해 주세요', HttpStatus.SERVICE_UNAVAILABLE);
-    const saved = saveBuffer(out, 'png');
+    const saved = await saveBuffer(out, 'png');
     await this.prisma.gamePhoto.create({ data: { groupId, userId: actor.id, kind: 'TRANSFORM', mediaUrl: saved.url, caption: input.style } });
     return { url: saved.url, style: input.style };
   }

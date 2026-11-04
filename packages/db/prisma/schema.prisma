@@ -775,6 +775,7 @@ model BoardPost {
   authorId  String
   title     String
   body      String
+  attachments Json @default("[]")
   anonymous Boolean   @default(false)
   pinned    Boolean   @default(false)
   hiddenAt  DateTime?
@@ -793,6 +794,7 @@ model BoardComment {
   postId    String
   authorId  String
   body      String
+  attachments Json @default("[]")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   post      BoardPost @relation(fields: [postId], references: [id], onDelete: Cascade)
@@ -980,6 +982,7 @@ model Notice {
   authorId  String
   title     String
   body      String
+  attachments Json @default("[]")
   pinned    Boolean      @default(false)
   important Boolean      @default(false)
   createdAt DateTime     @default(now())
@@ -1004,6 +1007,7 @@ model SystemNotice {
   id        String    @id @default(cuid())
   title     String
   body      String
+  attachments Json @default("[]")
   level     String    @default("INFO") // INFO | UPDATE | MAINTENANCE | URGENT
   pinned    Boolean   @default(false)
   banner    Boolean   @default(false) // user-web 상단 띠 배너
@@ -1025,6 +1029,7 @@ model Suggestion {
   category     String           @default("ETC")
   title        String
   body         String
+  attachments  Json @default("[]")
   status       String           @default("RECEIVED") // RECEIVED | REVIEWING | ACCEPTED | DONE | DECLINED
   answer       String?
   answeredById String?
@@ -1082,14 +1087,34 @@ model Terms {
   content     String
   required    Boolean          @default(true)
   status      String           @default("DRAFT") // DRAFT | PUBLISHED | ARCHIVED
+  attachment  Json?
+  changeSummary String         @default("")
   effectiveAt DateTime?
   publishedAt DateTime?
   createdById String
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   agreements  TermsAgreement[]
+  notifications TermsNotification[]
 
   @@unique([type, version])
+}
+
+model TermsNotification {
+  id          String   @id @default(cuid())
+  termsId     String
+  userId      String
+  email       String
+  status      String   @default("PENDING")
+  attempts    Int      @default(0)
+  sentAt      DateTime?
+  lastError   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  terms       Terms    @relation(fields: [termsId], references: [id], onDelete: Cascade)
+
+  @@unique([termsId, userId])
+  @@index([status, attempts])
 }
 
 model TermsAgreement {

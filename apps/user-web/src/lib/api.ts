@@ -1,5 +1,9 @@
+import { attachmentSchema } from '@weplay/shared';
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
 const TOKEN_KEY = 'wp_user_token';
+export const TERMS_REQUIRED_EVENT = 'wp:terms-required';
+export const AUTH_CHANGED_EVENT = 'wp:auth-changed';
 
 export class ApiError extends Error {
   constructor(
@@ -13,9 +17,19 @@ export class ApiError extends Error {
 
 export const tokenStore = {
   get: () => (typeof window === 'undefined' ? null : localStorage.getItem(TOKEN_KEY)),
-  set: (t: string) => localStorage.setItem(TOKEN_KEY, t),
-  clear: () => localStorage.removeItem(TOKEN_KEY),
+  set: (t: string) => {
+    localStorage.setItem(TOKEN_KEY, t);
+    window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
+  },
+  clear: () => {
+    localStorage.removeItem(TOKEN_KEY);
+    window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
+  },
 };
+
+function notifyTermsRequired(data: { error?: { code?: string } }) {
+  if (typeof window !== 'undefined' && data?.error?.code === 'TERMS_AGREEMENT_REQUIRED') window.dispatchEvent(new Event(TERMS_REQUIRED_EVENT));
+}
 
 export async function api<T = any>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
   const token = tokenStore.get();
@@ -29,6 +43,7 @@ export async function api<T = any>(path: string, init: { method?: string; body?:
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
+    if (path !== '/me/terms/pending') notifyTermsRequired(data);
     if (res.status === 401) tokenStore.clear();
     throw new ApiError(res.status, data?.error?.code ?? 'UNKNOWN', data?.error?.message ?? '요청에 실패했습니다');
   }
@@ -57,6 +72,29 @@ export async function uploadFile(groupId: string, file: File) {
     body: form,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, data?.error?.code ?? 'UNKNOWN', data?.error?.message ?? '업로드에 실패했습니다');
+  if (!res.ok) {
+    notifyTermsRequired(data);
+    throw new ApiError(res.status, data?.error?.code ?? 'UNKNOWN', data?.error?.message ?? '업로드에 실패했습니다');
+  }
   return data as { url: string; mediaType: 'IMAGE' | 'VIDEO' };
+}
+
+export async function uploadAttachment(groupId: string, file: File) {
+  const token = tokenStore.get();
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${API_URL}/groups/${groupId}/uploads/attachments`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    notifyTermsRequired(data);
+    if (res.status === 401) tokenStore.clear();
+    throw new ApiError(res.status, data?.error?.code ?? 'UNKNOWN', data?.error?.message ?? '업로드에 실패했습니다');
+  }
+  const parsed = attachmentSchema.safeParse(data);
+  if (!parsed.success) throw new Error('첨부 파일 응답이 올바르지 않습니다');
+  return parsed.data;
 }

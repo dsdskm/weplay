@@ -3,16 +3,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { SYSTEM_NOTICE_LEVELS } from '@weplay/shared';
+import { readAttachments, type Attachment } from '@weplay/shared';
+import { AttachmentList, AttachmentPicker } from '@/components/attachments';
 import { Badge, Button, Card, Empty, ErrorText, Input } from '@/components/ui';
 import { Modal } from '@/components/modal';
 import { Pager } from '@/components/pager';
 import { useDialog } from '@/components/confirm-dialog';
-import { api, errorMessage, fromLocalInput, toLocalInput } from '@/lib/api';
+import { api, errorMessage, fromLocalInput, toLocalInput, uploadAdminAttachment } from '@/lib/api';
 
 interface Row {
   id: string;
   title: string;
   body: string;
+  attachments?: Attachment[];
   level: string;
   pinned: boolean;
   banner: boolean;
@@ -33,13 +36,15 @@ export default function SystemNoticesPage() {
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<{ id?: string; form: Form }>();
   const [error, setError] = useState<string>();
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [uploading, setUploading] = useState(false);
   const { data } = useQuery({ queryKey: ['admin', 'system-notices', page], queryFn: () => api<{ items: Row[]; total: number }>(`/admin/system-notices?page=${page}&pageSize=${PAGE}`) });
   const refresh = () => qc.invalidateQueries({ queryKey: ['admin', 'system-notices'] });
 
   const save = useMutation({
     mutationFn: () => {
       const f = editing!.form;
-      const body = { title: f.title.trim(), body: f.body.trim(), level: f.level, pinned: f.pinned, banner: f.banner, published: f.published, startsAt: fromLocalInput(f.startsAt), endsAt: fromLocalInput(f.endsAt) };
+      const body = { title: f.title.trim(), body: f.body.trim(), attachments, level: f.level, pinned: f.pinned, banner: f.banner, published: f.published, startsAt: fromLocalInput(f.startsAt), endsAt: fromLocalInput(f.endsAt) };
       return editing!.id ? api(`/admin/system-notices/${editing!.id}`, { method: 'PATCH', body }) : api('/admin/system-notices', { body });
     },
     onSuccess: () => {
@@ -64,7 +69,7 @@ export default function SystemNoticesPage() {
           <h1 className="text-2xl font-bold">서비스 공지</h1>
           <p className="text-sm text-slate-500">모든 사용자에게 보이는 공지예요. 배너로 지정하면 상단에 띠로 떠요.</p>
         </div>
-        <Button onClick={() => setEditing({ form: { ...EMPTY } })}>새 공지</Button>
+        <Button disabled={uploading || save.isPending} onClick={() => { setAttachments([]); setEditing({ form: { ...EMPTY } }); }}>새 공지</Button>
       </div>
       <ErrorText>{error}</ErrorText>
 
@@ -90,9 +95,10 @@ export default function SystemNoticesPage() {
                     {n.pinned && <Badge tone="slate">고정</Badge>}
                     {(n.startsAt || n.endsAt) && <span className="text-slate-400">{n.startsAt ? toLocalInput(n.startsAt).replace('T', ' ') : '즉시'} ~ {n.endsAt ? toLocalInput(n.endsAt).replace('T', ' ') : '무기한'}</span>}
                   </p>
+                  <AttachmentList attachments={n.attachments} />
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="secondary" onClick={() => setEditing({ id: n.id, form: { title: n.title, body: n.body, level: n.level, pinned: n.pinned, banner: n.banner, published: n.published, startsAt: toLocalInput(n.startsAt), endsAt: toLocalInput(n.endsAt) } })}>
+                  <Button variant="secondary" disabled={uploading || save.isPending} onClick={() => { setAttachments(readAttachments(n.attachments)); setEditing({ id: n.id, form: { title: n.title, body: n.body, level: n.level, pinned: n.pinned, banner: n.banner, published: n.published, startsAt: toLocalInput(n.startsAt), endsAt: toLocalInput(n.endsAt) } }); }}>
                     수정
                   </Button>
                   <Button
@@ -113,15 +119,15 @@ export default function SystemNoticesPage() {
 
       <Modal
         open={!!editing}
-        onClose={() => setEditing(undefined)}
+        onClose={() => { if (!uploading && !save.isPending) setEditing(undefined); }}
         wide
         title={editing?.id ? '공지 수정' : '새 공지'}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setEditing(undefined)}>
+            <Button variant="ghost" disabled={uploading || save.isPending} onClick={() => setEditing(undefined)}>
               취소
             </Button>
-            <Button onClick={() => save.mutate()} disabled={!f?.title.trim() || !f?.body.trim() || save.isPending}>
+            <Button onClick={() => save.mutate()} disabled={!f?.title.trim() || !f?.body.trim() || save.isPending || uploading}>
               저장
             </Button>
           </>
@@ -129,6 +135,7 @@ export default function SystemNoticesPage() {
       >
         {f && (
           <div className="space-y-3">
+            <ErrorText>{error}</ErrorText>
             <div className="grid gap-2 sm:grid-cols-2">
               <Input placeholder="제목" value={f.title} onChange={(e) => set({ title: e.target.value })} maxLength={100} />
               <select className="rounded-xl border border-slate-200 px-3 py-2 text-sm" value={f.level} onChange={(e) => set({ level: e.target.value })}>
@@ -140,6 +147,7 @@ export default function SystemNoticesPage() {
               </select>
             </div>
             <textarea className="min-h-40 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="내용" value={f.body} onChange={(e) => set({ body: e.target.value })} maxLength={10000} />
+            <AttachmentPicker value={attachments} onChange={setAttachments} upload={uploadAdminAttachment} onUploadingChange={setUploading} disabled={save.isPending} />
             <div className="grid gap-2 sm:grid-cols-2">
               <label className="flex flex-col gap-1 text-xs text-slate-500">
                 게시 시작 (비우면 즉시)
