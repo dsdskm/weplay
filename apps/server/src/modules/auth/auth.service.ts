@@ -84,7 +84,12 @@ export class AuthService {
   /** 회원가입 전 인증번호 발송 (아이디 = 이메일) */
   async sendSignupCode(email: string) {
     await this.assertAccountAvailable(email);
-    await this.verification.send(email, 'SIGNUP', null);
+    return this.verification.send(email, 'SIGNUP', null);
+  }
+
+  async verifySignupCode(email: string, code: string) {
+    await this.assertAccountAvailable(email);
+    await this.verification.check(email, 'SIGNUP', code, null);
     return { ok: true };
   }
 

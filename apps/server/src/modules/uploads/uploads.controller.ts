@@ -45,4 +45,10 @@ export class AdminUploadsController {
   uploadAttachment(@UploadedFile() file: UploadedFileLike | undefined) {
     return this.uploads.saveAttachment(file, true);
   }
+
+  @Post('terms/:type/attachments')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: maxUploadBytes() } }))
+  uploadTermsAttachment(@Param('type') type: string, @UploadedFile() file: UploadedFileLike | undefined) {
+    return this.uploads.saveTermsAttachment(file, type);
+  }
 }

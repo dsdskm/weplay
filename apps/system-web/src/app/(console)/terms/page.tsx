@@ -6,11 +6,11 @@ import { Copy, Eye, Pencil, Plus, RefreshCw, Send, Trash2, Upload, X } from 'luc
 import { TERMS_TYPES } from '@weplay/shared';
 import { MAX_ATTACHMENT_SIZE, type Attachment } from '@weplay/shared';
 import { AttachmentList } from '@/components/attachments';
-import { Badge, Button, Card, cn, Empty, ErrorText, Input } from '@/components/ui';
+import { Badge, Button, Card, cn, Empty, ErrorText } from '@/components/ui';
 import { Modal } from '@/components/modal';
 import { useDialog } from '@/components/confirm-dialog';
 import { Pager } from '@/components/pager';
-import { api, errorMessage, fromLocalInput, toLocalInput, uploadAdminAttachment } from '@/lib/api';
+import { api, errorMessage, fromLocalInput, toLocalInput, uploadAdminTermsAttachment } from '@/lib/api';
 import { TermsDelivery } from './terms-delivery';
 
 interface Row {
@@ -32,7 +32,7 @@ interface Detail extends Row {
   content: string;
   _count: { agreements: number };
 }
-type Form = { id?: string; type: string; title: string; content: string; required: boolean; effectiveAt: string; attachment?: Attachment | null; pendingFile?: File; changeSummary?: string };
+type Form = { id?: string; type: string; content: string; required: boolean; effectiveAt: string; attachment?: Attachment | null; pendingFile?: File; changeSummary?: string };
 const PAGE = 10;
 const pagesOf = (total: number) => Math.max(1, Math.ceil(total / PAGE));
 const STATUS = { DRAFT: ['초안', 'amber'], PUBLISHED: ['게시 중', 'green'], ARCHIVED: ['보관', 'slate'] } as const;
@@ -63,7 +63,7 @@ export default function TermsAdminPage() {
     onSuccess: ({ row, clone }) => {
       setDetailId(undefined);
       setError(undefined);
-      setEditing({ id: clone ? undefined : row.id, type: row.type, title: row.title, content: row.content, required: row.type === 'SERVICE' || row.required, effectiveAt: clone ? '' : toLocalInput(row.effectiveAt), attachment: row.attachment ?? null, changeSummary: clone ? '' : row.changeSummary ?? '' });
+      setEditing({ id: clone ? undefined : row.id, type: row.type, content: row.content, required: row.type === 'SERVICE' || row.required, effectiveAt: clone ? '' : toLocalInput(row.effectiveAt), attachment: row.attachment ?? null, changeSummary: clone ? '' : row.changeSummary ?? '' });
     },
     onError: (reason) => { setDetailId(undefined); setError(errorMessage(reason)); },
   });
@@ -72,12 +72,12 @@ export default function TermsAdminPage() {
       const f = editing!;
       let attachment = f.attachment ?? null;
       if (f.pendingFile) {
-        attachment = await uploadAdminAttachment(f.pendingFile);
+        attachment = await uploadAdminTermsAttachment(f.pendingFile, f.type);
         if (attachment.mediaType !== 'FILE' || !/\.(pdf|txt|html|htm)$/i.test(attachment.url)) throw new Error('PDF, 텍스트 또는 HTML 파일 응답이 필요해요.');
         const uploaded = attachment;
         setEditing((current) => current && current.pendingFile === f.pendingFile ? { ...current, attachment: uploaded, pendingFile: undefined } : current);
       }
-      const body = { type: f.type, title: f.title.trim(), content: f.content.trim(), required: f.type === 'SERVICE' || f.required, effectiveAt: fromLocalInput(f.effectiveAt), attachment, changeSummary: f.changeSummary?.trim() ?? '' };
+      const body = { type: f.type, content: f.content.trim(), required: f.type === 'SERVICE' || f.required, effectiveAt: fromLocalInput(f.effectiveAt), attachment, changeSummary: f.changeSummary?.trim() ?? '' };
       return f.id ? api(`/admin/terms/${f.id}`, { method: 'PATCH', body }) : api('/admin/terms', { body });
     },
     onMutate: () => setError(undefined),
@@ -117,7 +117,7 @@ export default function TermsAdminPage() {
           <h1 className="text-2xl font-bold">약관 관리</h1>
           <p className="text-sm text-slate-500">종류별로 버전을 만들고, 초안을 게시하면 사용자에게 다시 동의를 받아요.</p>
         </div>
-        <Button className="shrink-0" disabled={acting || busy} onClick={() => { setError(undefined); setEditing({ type, title: '', content: '', required: type === 'SERVICE' || (TERMS_TYPES.find((item) => item.key === type)?.required ?? true), effectiveAt: '', attachment: null, changeSummary: '' }); }}><Plus size={16} aria-hidden="true" />새 초안</Button>
+        <Button className="shrink-0" disabled={acting || busy} onClick={() => { setError(undefined); setEditing({ type, content: '', required: type === 'SERVICE' || (TERMS_TYPES.find((item) => item.key === type)?.required ?? true), effectiveAt: '', attachment: null, changeSummary: '' }); }}><Plus size={16} aria-hidden="true" />새 초안</Button>
       </div>
       <div className="flex flex-wrap gap-2" role="group" aria-label="약관 종류">
         {TERMS_TYPES.filter((item) => item.key === 'SERVICE' || item.key === 'PRIVACY').map((t) => (
@@ -219,7 +219,7 @@ export default function TermsAdminPage() {
           <p className="text-sm text-slate-500">시행 {toLocalInput(detail.data.effectiveAt).replace('T', ' ') || '게시 시점'} · 게시 {toLocalInput(detail.data.publishedAt).replace('T', ' ') || '-'}</p>
           <section className="space-y-2"><h3 className="text-sm font-bold">개정 내용</h3><p className="whitespace-pre-wrap break-words text-sm">{detail.data.changeSummary || '등록된 개정 내용 없음'}</p></section>
           {detail.data.attachment && <AttachmentList attachments={[detail.data.attachment]} />}
-          <section className="space-y-2"><h3 className="text-sm font-bold">본문 / 문서 요약</h3><p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{detail.data.content}</p></section>
+          {detail.data.content && <section className="space-y-2"><h3 className="text-sm font-bold">본문 / 문서 요약</h3><p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{detail.data.content}</p></section>}
           {detail.data.status !== 'DRAFT' && detailId && <TermsDelivery key={detailId} id={detailId} />}
         </div>}
       </Modal>
@@ -234,7 +234,7 @@ export default function TermsAdminPage() {
             <Button variant="ghost" disabled={busy} onClick={closeEditor}>
               취소
             </Button>
-            <Button onClick={() => save.mutate()} disabled={!f?.title.trim() || !f?.content.trim() || busy}>
+            <Button onClick={() => save.mutate()} disabled={(!f?.content.trim() && !f?.attachment && !f?.pendingFile) || busy}>
               {save.isPending ? '저장 중...' : '저장'}
             </Button>
           </>
@@ -251,7 +251,6 @@ export default function TermsAdminPage() {
                   </option>
                 ))}
               </select>
-              <Input aria-label="약관 제목" placeholder="제목" value={f.title} onChange={(e) => set({ title: e.target.value })} maxLength={100} />
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={f.type === 'SERVICE' || f.required} disabled={f.type === 'SERVICE'} onChange={(e) => set({ required: e.target.checked })} /> 필수 동의
               </label>
@@ -270,9 +269,6 @@ export default function TermsAdminPage() {
               {f.pendingFile ? <p role="status" className="break-all text-sm text-slate-600">{f.pendingFile.name} ({Math.ceil(f.pendingFile.size / 1024).toLocaleString()} KB) · 저장 대기</p> : f.attachment && <AttachmentList attachments={[f.attachment]} />}
               {(f.pendingFile || f.attachment) && <Button variant="ghost" title="첨부 문서 제거" onClick={() => set({ attachment: null, pendingFile: undefined })}><X size={16} aria-hidden="true" />첨부 제거</Button>}
             </div>
-            <label className="flex flex-col gap-1 text-xs text-slate-500">본문 / 첨부 문서의 텍스트 요약 (필수)
-              <textarea required className="min-h-72 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm leading-relaxed text-slate-800" value={f.content} onChange={(e) => set({ content: e.target.value })} />
-            </label>
           </fieldset>
         )}
       </Modal>

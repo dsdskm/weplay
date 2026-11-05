@@ -150,6 +150,9 @@ export type PasswordResetConfirmInput = z.infer<typeof passwordResetConfirmSchem
 export const emailCodeRequestSchema = z.object({ email: emailSchema });
 export type EmailCodeRequestInput = z.infer<typeof emailCodeRequestSchema>;
 
+export const signupEmailCodeVerifySchema = z.object({ email: emailSchema, emailCode: emailCodeSchema });
+export type SignupEmailCodeVerifyInput = z.infer<typeof signupEmailCodeVerifySchema>;
+
 /** 인증번호를 확인해야 하는 공개 회원가입 */
 export const signupWithCodeSchema = signupSchema.extend({
   emailCode: emailCodeSchema,

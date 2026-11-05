@@ -2,7 +2,7 @@ import { Storage } from '@google-cloud/storage';
 import { Logger } from '@nestjs/common';
 import { createReadStream } from 'fs';
 import { mkdir, stat, writeFile } from 'fs/promises';
-import { join, resolve } from 'path';
+import { dirname, join, resolve } from 'path';
 import type { Readable } from 'stream';
 
 export const UPLOAD_TYPES = {
@@ -25,7 +25,7 @@ export const maxUploadBytes = () => {
 export const mediaTypeOf = (ext: UploadExtension): MediaType => UPLOAD_TYPES[ext].startsWith('image/') ? 'IMAGE' : UPLOAD_TYPES[ext].startsWith('video/') ? 'VIDEO' : 'FILE';
 
 export function parseUploadName(value: string): { name: string; ext: UploadExtension; mimeType: string; mediaType: MediaType } | null {
-    const match = /^([a-f0-9]{32})\.([a-z0-9]{2,4})$/.exec(value);
+    const match = /^(?:terms\/(?:private-policy|terms-of-service)\/)?([a-f0-9]{32})\.([a-z0-9]{2,4})$/.exec(value);
     if (!match || !Object.hasOwn(UPLOAD_TYPES, match[2])) return null;
     const ext = match[2] as UploadExtension;
     return { name: value, ext, mimeType: UPLOAD_TYPES[ext], mediaType: mediaTypeOf(ext) };
@@ -64,8 +64,9 @@ function checkedName(name: string) {
 export async function writeUpload(name: string, buffer: Buffer) {
     const parsed = checkedName(name);
     if (driver() === 'local') {
-        await mkdir(uploadDir(), { recursive: true });
-        await writeFile(join(uploadDir(), name), buffer, { flag: 'wx' });
+        const path = join(uploadDir(), name);
+        await mkdir(dirname(path), { recursive: true });
+        await writeFile(path, buffer, { flag: 'wx' });
         return;
     }
     await bucket().file(name).save(buffer, {
@@ -74,7 +75,7 @@ export async function writeUpload(name: string, buffer: Buffer) {
         preconditionOpts: { ifGenerationMatch: 0 },
         metadata: {
             contentType: parsed.mimeType,
-            contentDisposition: `${parsed.mediaType === 'FILE' ? 'attachment' : 'inline'}; filename="${name}"`,
+            contentDisposition: `${parsed.name.startsWith('terms/') || parsed.mediaType !== 'FILE' ? 'inline' : 'attachment'}; filename="${parsed.name.split('/').pop()}"`,
             cacheControl: 'private, max-age=3600',
         },
     });

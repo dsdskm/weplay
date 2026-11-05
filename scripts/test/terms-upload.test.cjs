@@ -7,7 +7,7 @@ const { resolve } = require('node:path');
 const root = resolve(__dirname, '../..');
 const webRequire = createRequire(resolve(root, 'apps/system-web/package.json'));
 const ts = webRequire('typescript');
-const attachment = { url: `/uploads/${'a'.repeat(32)}.html`, name: 'terms.html', size: 12, mimeType: 'text/html', mediaType: 'FILE' };
+const attachment = { url: `/uploads/terms/terms-of-service/${'a'.repeat(32)}.html`, name: 'terms.html', size: 12, mimeType: 'text/html', mediaType: 'FILE' };
 
 function elements(node) {
     if (!node || typeof node !== 'object') return [];
@@ -26,10 +26,11 @@ function fixture() {
             if (failures.save) throw new Error('Terms save failed');
             return { id: 'saved' };
         },
-        uploadAdminAttachment: async (file) => {
-            requests.push({ operation: 'upload', file });
+        uploadAdminTermsAttachment: async (file, type) => {
+            requests.push({ operation: 'upload', file, type });
             if (failures.upload) throw new Error('Upload failed');
-            return { ...attachment, name: file.name };
+            const folder = type === 'PRIVACY' ? 'private-policy' : 'terms-of-service';
+            return { ...attachment, url: attachment.url.replace(/terms\/[^/]+\//, `terms/${folder}/`), name: file.name };
         },
         errorMessage: (error) => error.message,
         fromLocalInput: (value) => value || null,
@@ -89,12 +90,8 @@ function fixture() {
     function open() {
         elements(render()).find((element) => element.type === 'Button' && elements(element).some((child) => child.type === 'icon-Plus')).props.onClick();
     }
-    function fill() {
-        editorElements().find((element) => element.type === 'Input' && element.props['aria-label'] === '약관 제목').props.onChange({ target: { value: 'Terms title' } });
-        editorElements().find((element) => element.type === 'textarea' && element.props.required).props.onChange({ target: { value: 'Terms text' } });
-    }
     open();
-    return { requests, failures, editor, editorElements, select, save, open, fill };
+    return { requests, failures, editor, editorElements, select, save, open };
 }
 
 test('selecting, replacing, removing and cancelling files never invokes upload or save APIs', () => {
@@ -114,24 +111,23 @@ test('selecting, replacing, removing and cancelling files never invokes upload o
 
 test('save uploads the most recently selected file before saving its metadata', async () => {
     const view = fixture();
-    view.fill();
     view.select(new File(['old'], 'old.html', { type: 'text/html' }));
     const file = new File(['new'], 'new.html', { type: 'text/html' });
     view.select(file);
     await view.save();
     assert.deepEqual(view.requests.map((request) => request.operation), ['upload', 'save']);
     assert.equal(view.requests[0].file, file);
+    assert.equal(view.requests[0].type, 'SERVICE');
     assert.equal(view.requests[1].path, '/admin/terms');
     assert.deepEqual(view.requests[1].body.attachment, { ...attachment, name: 'new.html' });
-    assert.equal(view.requests[1].body.title, 'Terms title');
-    assert.equal(view.requests[1].body.content, 'Terms text');
+    assert.ok(!Object.hasOwn(view.requests[1].body, 'title'));
+    assert.equal(view.requests[1].body.content, '');
     assert.ok(!Object.hasOwn(view.requests[1].body, 'pendingFile'));
     assert.equal(view.editor(), undefined);
 });
 
 test('upload failure retains the file and form without submitting terms', async () => {
     const view = fixture();
-    view.fill();
     const file = new File(['terms'], 'terms.html', { type: 'text/html' });
     view.select(file);
     view.failures.upload = true;
@@ -142,12 +138,11 @@ test('upload failure retains the file and form without submitting terms', async 
     await view.save();
     assert.deepEqual(view.requests.map((request) => request.operation), ['upload', 'upload', 'save']);
     assert.equal(view.requests[1].file, file);
-    assert.equal(view.requests[2].body.content, 'Terms text');
+    assert.equal(view.requests[2].body.content, '');
 });
 
 test('retrying failed terms persistence reuses uploaded metadata without uploading again', async () => {
     const view = fixture();
-    view.fill();
     view.select(new File(['terms'], 'terms.html', { type: 'text/html' }));
     view.failures.save = true;
     await view.save();
@@ -165,4 +160,23 @@ test('invalid file selection and picker dismissal do not call APIs', () => {
     view.select(undefined);
     assert.equal(view.requests.length, 0);
     assert.ok(!view.editorElements().some((element) => element.props?.role === 'status'));
+});
+
+test('new terms cannot be saved until an attachment is selected', () => {
+    const view = fixture();
+    const saveButton = () => elements(view.editor().props.footer).find((element) => element.type === 'Button' && element.props.children === '저장');
+    assert.equal(saveButton().props.disabled, true);
+    view.select(new File(['terms'], 'terms.pdf', { type: 'application/pdf' }));
+    assert.equal(saveButton().props.disabled, false);
+    assert.ok(!view.editorElements().some((element) => element.props?.['aria-label'] === '약관 제목'));
+    assert.ok(!view.editorElements().some((element) => element.type === 'textarea' && element.props.required));
+});
+
+test('privacy documents upload into the private-policy folder', async () => {
+    const view = fixture();
+    view.editorElements().find((element) => element.type === 'select' && element.props['aria-label'] === '약관 종류').props.onChange({ target: { value: 'PRIVACY' } });
+    view.select(new File(['privacy'], 'privacy.html', { type: 'text/html' }));
+    await view.save();
+    assert.equal(view.requests[0].type, 'PRIVACY');
+    assert.match(view.requests[1].body.attachment.url, /^\/uploads\/terms\/private-policy\//);
 });

@@ -64,7 +64,7 @@ export function PublicLegalDocument() {
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500"><span>시행일: {selected.effectiveAt ? new Date(selected.effectiveAt).toLocaleString('ko-KR') : '미정'}</span><span>게시일: {selected.publishedAt ? new Date(selected.publishedAt).toLocaleString('ko-KR') : '미정'}</span></div>
                 {selected.changeSummary && <p className="whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm">변경 사항: {selected.changeSummary}</p>}
                 {selected.attachment && <a className="block break-all text-sm text-brand-700 underline" href={assetUrl(selected.attachment.url)} target="_blank" rel="noopener noreferrer">첨부 문서: {selected.attachment.name}</a>}
-                <div className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{selected.content}</div>
+                {selected.content && <div className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{selected.content}</div>}
             </article>
         </>}
     </section>;

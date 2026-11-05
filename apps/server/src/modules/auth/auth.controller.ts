@@ -16,6 +16,8 @@ import {
   passwordResetRequestSchema,
   SignupWithCodeInput,
   signupWithCodeSchema,
+  SignupEmailCodeVerifyInput,
+  signupEmailCodeVerifySchema,
   emailCodeRequestSchema,
   EmailCodeRequestInput,
 } from '@weplay/shared';
@@ -25,7 +27,7 @@ import { AuthService } from './auth.service';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(private readonly auth: AuthService) { }
 
   @Public()
   @Get('config')
@@ -61,6 +63,12 @@ export class AuthController {
   @Post('signup/email-code')
   signupEmailCode(@Body(new ZodPipe(emailCodeRequestSchema)) body: EmailCodeRequestInput) {
     return this.auth.sendSignupCode(body.email);
+  }
+
+  @Public()
+  @Post('signup/email-code/verify')
+  verifySignupEmailCode(@Body(new ZodPipe(signupEmailCodeVerifySchema)) body: SignupEmailCodeVerifyInput) {
+    return this.auth.verifySignupCode(body.email, body.emailCode);
   }
 
   @Public()

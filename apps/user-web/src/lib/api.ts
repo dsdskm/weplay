@@ -10,6 +10,7 @@ export class ApiError extends Error {
     public status: number,
     public code: string,
     message: string,
+    public details?: unknown,
   ) {
     super(message);
   }
@@ -45,7 +46,7 @@ export async function api<T = any>(path: string, init: { method?: string; body?:
   if (!res.ok) {
     if (path !== '/me/terms/pending') notifyTermsRequired(data);
     if (res.status === 401) tokenStore.clear();
-    throw new ApiError(res.status, data?.error?.code ?? 'UNKNOWN', data?.error?.message ?? '요청에 실패했습니다');
+    throw new ApiError(res.status, data?.error?.code ?? 'UNKNOWN', data?.error?.message ?? '요청에 실패했습니다', data?.error?.details);
   }
   return data as T;
 }

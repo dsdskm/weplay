@@ -46,8 +46,9 @@ export function validateUpload(file: UploadedFileLike | undefined, attachments =
   return { name, ext: ext === 'jpeg' ? 'jpg' as const : ext, mimeType, mediaType };
 }
 
-async function persist(buffer: Buffer, ext: UploadExtension) {
-  const name = `${randomBytes(16).toString('hex')}.${ext}`;
+async function persist(buffer: Buffer, ext: UploadExtension, folder?: 'terms/private-policy' | 'terms/terms-of-service') {
+  const filename = `${randomBytes(16).toString('hex')}.${ext}`;
+  const name = folder ? `${folder}/${filename}` : filename;
   try {
     await writeUpload(name, buffer);
   } catch (error) {
@@ -67,6 +68,14 @@ export class UploadsService {
   async saveAttachment(file: UploadedFileLike | undefined, allowHtml = false) {
     const validated = validateUpload(file, true, true, allowHtml);
     return { ...await persist(file!.buffer, validated.ext), name: validated.name, size: file!.size, mimeType: validated.mimeType };
+  }
+
+  async saveTermsAttachment(file: UploadedFileLike | undefined, type: string) {
+    const folder = type === 'SERVICE' ? 'terms/terms-of-service' : type === 'PRIVACY' ? 'terms/private-policy' : undefined;
+    if (!folder) throw bad('약관 종류를 확인할 수 없어요');
+    const validated = validateUpload(file, true, true, true);
+    if (!['pdf', 'txt', 'html', 'htm'].includes(validated.ext)) throw bad('약관 파일은 PDF, TXT 또는 HTML만 사용할 수 있어요');
+    return { ...await persist(file!.buffer, validated.ext, folder), name: validated.name, size: file!.size, mimeType: validated.mimeType };
   }
 }
 

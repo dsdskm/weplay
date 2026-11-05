@@ -96,11 +96,17 @@ test('backend uploads: validation, storage and HTTP routing (no ADC/network)', a
         await suite.test('strict filename and URL safety', async () => {
             const name = `${'a'.repeat(32)}.png`;
             assert.equal(storage.parseUploadUrl(`/uploads/${name}`).name, name);
+            const scopedName = `terms/private-policy/${'b'.repeat(32)}.pdf`;
+            assert.equal(storage.parseUploadUrl(`/uploads/${scopedName}`).name, scopedName);
             for (const value of ['../' + name, name + '/x', name + '?x', name + '\n', name.toUpperCase(), `${'a'.repeat(32)}.svg`, `%2e%2e%2f${name}`]) {
                 assert.equal(storage.parseUploadName(value), null);
                 await assert.rejects(storage.openUpload(value));
             }
-            for (const value of [`https://example.com/uploads/${name}`, `/uploads/../${name}`, `/uploads/${name}?x`, `/uploads/${name}#x`, `/uploads/${name}%00`]) {
+            for (const value of [`terms/unknown/${'c'.repeat(32)}.pdf`, `terms/private-policy/../${name}`, `terms/terms-of-service/${'D'.repeat(32)}.pdf`]) {
+                assert.equal(storage.parseUploadName(value), null);
+                await assert.rejects(storage.openUpload(value));
+            }
+            for (const value of [`https://example.com/uploads/${name}`, `/uploads/../${name}`, `/uploads/${name}?x`, `/uploads/${name}#x`, `/uploads/${name}%00`, `/uploads/terms/unknown/${'c'.repeat(32)}.pdf`]) {
                 assert.equal(storage.parseUploadUrl(value), null);
                 await assert.rejects(storage.readUploadBuffer(value));
             }
@@ -112,6 +118,12 @@ test('backend uploads: validation, storage and HTTP routing (no ADC/network)', a
             assert.match(legacy.url, /^\/uploads\/[a-f0-9]{32}\.png$/);
             assert.equal(legacy.mediaType, 'IMAGE');
             assert.equal((await storage.readUploadBuffer(legacy.url)).toString(), 'legacy image');
+            const privatePolicy = await uploads.saveTermsAttachment(file('privacy.pdf', 'application/pdf', Buffer.from('%PDF-privacy')), 'PRIVACY');
+            assert.match(privatePolicy.url, /^\/uploads\/terms\/private-policy\/[a-f0-9]{32}\.pdf$/);
+            assert.equal((await storage.readUploadBuffer(privatePolicy.url)).toString(), '%PDF-privacy');
+            assert.equal((await readdir(join(directory, 'terms', 'private-policy'))).length, 1);
+            await assert.rejects(uploads.saveTermsAttachment(file('terms.docx', storage.UPLOAD_TYPES.docx), 'SERVICE'), (error) => error.getStatus() === 400);
+            await assert.rejects(uploads.saveTermsAttachment(file('terms.pdf', 'application/pdf'), 'MARKETING'), (error) => error.getStatus() === 400);
             const ai = new AiService();
             assert.deepEqual(await ai.imagePayload(legacy.url), { mime: 'image/png', data: Buffer.from('legacy image').toString('base64') });
             assert.equal(await ai.imagePayload('/uploads/../secret.png'), null);
@@ -131,6 +143,11 @@ test('backend uploads: validation, storage and HTTP routing (no ADC/network)', a
             assert.equal(writes.at(-1).options.preconditionOpts.ifGenerationMatch, 0);
             assert.equal(writes.at(-1).options.public, undefined);
             assert.equal(writes.at(-1).options.predefinedAcl, undefined);
+            const cloudTerms = await uploads.saveTermsAttachment(file('privacy.html', 'text/html'), 'PRIVACY');
+            assert.match(cloudTerms.url, /^\/uploads\/terms\/private-policy\/[a-f0-9]{32}\.html$/);
+            assert.match(writes.at(-1).key, /^terms\/private-policy\/[a-f0-9]{32}\.html$/);
+            assert.match(writes.at(-1).options.metadata.contentDisposition, /^inline; filename="[a-f0-9]{32}\.html"$/);
+            assert.equal((await storage.readUploadBuffer(cloudTerms.url)).toString(), 'upload fixture');
             const image = await saveBuffer(Buffer.from('cloud image'), 'png');
             assert.equal((await new AiService().imagePayload(image.url)).data, Buffer.from('cloud image').toString('base64'));
             assert.equal((await storage.readUploadBuffer(legacy.url)).toString(), 'legacy image');
@@ -174,7 +191,12 @@ test('backend uploads: validation, storage and HTTP routing (no ADC/network)', a
             Module({ controllers: [UploadMediaController, UploadsController, AdminUploadsController], providers: [{ provide: UploadsService, useValue: uploads }, { provide: FeatureSettingsService, useValue: settings }, { provide: PrismaService, useValue: prisma }] })(UploadTestModule);
             app = await NestFactory.create(UploadTestModule, { logger: false });
             app.enableCors({ origin: 'http://localhost:3000' });
-            app.setGlobalPrefix('api/v1', { exclude: [{ path: 'uploads/:name', method: RequestMethod.GET }, { path: 'uploads/:name', method: RequestMethod.HEAD }] });
+            app.setGlobalPrefix('api/v1', {
+                exclude: [
+                    { path: 'uploads/:name', method: RequestMethod.GET }, { path: 'uploads/:name', method: RequestMethod.HEAD },
+                    { path: 'uploads/terms/:folder/:name', method: RequestMethod.GET }, { path: 'uploads/terms/:folder/:name', method: RequestMethod.HEAD },
+                ]
+            });
             app.useGlobalGuards(new JwtAuthGuard(new Reflector(), jwt, prisma));
             app.useGlobalFilters(new AppExceptionFilter());
             await app.listen(0, '127.0.0.1');
@@ -221,6 +243,29 @@ test('backend uploads: validation, storage and HTTP routing (no ADC/network)', a
             assert.equal((await post('/api/v1/groups/group/uploads/attachments', null, 'file.txt', 'text/plain')).status, 401);
             assert.equal((await post('/api/v1/groups/group/uploads/attachments', 'outsider', 'file.txt', 'text/plain')).status, 403);
             assert.equal((await post('/api/v1/admin/uploads/attachments', 'member', 'file.txt', 'text/plain')).status, 403);
+            assert.equal((await post('/api/v1/admin/uploads/terms/SERVICE/attachments', 'member', 'terms.pdf', 'application/pdf')).status, 403);
+            assert.equal((await post('/api/v1/admin/uploads/terms/MARKETING/attachments', 'master', 'terms.pdf', 'application/pdf')).status, 400);
+            for (const [type, folder, name, mime] of [
+                ['SERVICE', 'terms-of-service', 'service.pdf', 'application/pdf'],
+                ['PRIVACY', 'private-policy', 'privacy.html', 'text/html'],
+            ]) {
+                response = await post(`/api/v1/admin/uploads/terms/${type}/attachments`, 'master', name, mime);
+                assert.equal(response.status, 201);
+                const uploaded = await response.json();
+                assert.match(uploaded.url, new RegExp(`^/uploads/terms/${folder}/[a-f0-9]{32}\\.${name.split('.').pop()}$`));
+                for (const method of ['GET', 'HEAD']) {
+                    response = await request(uploaded.url, { method });
+                    assert.equal(response.status, 200);
+                    assert.equal(response.headers.get('content-type'), mime);
+                    assert.match(response.headers.get('content-disposition'), /^inline;/);
+                    assert.equal(await response.text(), method === 'HEAD' ? '' : 'uploaded file');
+                }
+                if (type === 'PRIVACY') {
+                    assert.match(response.headers.get('content-security-policy'), /sandbox; default-src 'none'/);
+                    assert.match(response.headers.get('content-security-policy'), /style-src 'unsafe-inline'/);
+                    assert.match(response.headers.get('content-security-policy'), /frame-ancestors 'self' http:\/\/localhost:3000/);
+                }
+            }
             for (const ext of ['html', 'htm']) {
                 assert.equal((await post('/api/v1/groups/group/uploads/attachments', 'member', `terms.${ext}`, 'text/html')).status, 400);
                 assert.equal((await post('/api/v1/admin/uploads/attachments', 'member', `terms.${ext}`, 'text/html')).status, 403);

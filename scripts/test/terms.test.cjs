@@ -1,7 +1,10 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const { createRequire } = require('node:module');
+const { createHash } = require('node:crypto');
 const { readFileSync } = require('node:fs');
+const { mkdtemp, rm } = require('node:fs/promises');
+const { tmpdir } = require('node:os');
 const { join, resolve } = require('node:path');
 
 const root = resolve(__dirname, '../..');
@@ -18,8 +21,10 @@ serverRequire('reflect-metadata');
 const source = (path) => serverRequire(join(root, 'apps/server/src', path));
 const { effectiveTerms, validateConsent } = source('common/terms-policy.ts');
 const { TermsService, termsSchema } = source('modules/terms/terms.service.ts');
+const { UploadsService } = source('modules/uploads/uploads.service.ts');
 const { TermsMailService } = source('modules/terms/terms-mail.service.ts');
 const { AuthService } = source('modules/auth/auth.service.ts');
+const { EmailVerificationService } = source('common/email-verification.service.ts');
 const { JwtAuthGuard } = source('common/jwt-auth.guard.ts');
 const { signupWithCodeSchema } = serverRequire(join(root, 'packages/shared/src/schemas.ts'));
 
@@ -34,6 +39,104 @@ const privacy = document('privacy', 'PRIVACY');
 const marketing = document('marketing', 'MARKETING');
 const consentError = (error) => error.getStatus() === 403 && error.code === 'TERMS_AGREEMENT_REQUIRED';
 
+test('signup email code check validates without consuming; signup verify consumes it', async () => {
+    const row = {
+        id: 'verification',
+        codeHash: createHash('sha256').update('123456').digest('hex'),
+        expiresAt: new Date(Date.now() + 60_000),
+        attempts: 0,
+        userId: null,
+        consumedAt: null,
+    };
+    const updates = [];
+    const prisma = {
+        emailVerification: {
+            findUnique: async () => row,
+            update: async ({ data }) => {
+                updates.push(data);
+                if (data.attempts) row.attempts += data.attempts.increment;
+                if (data.consumedAt) row.consumedAt = data.consumedAt;
+            },
+        },
+    };
+    const verification = new EmailVerificationService(prisma, {});
+    await verification.check('new@example.test', 'SIGNUP', '123456', null);
+    assert.equal(row.consumedAt, null);
+    assert.equal(updates.length, 0);
+    await assert.rejects(verification.check('new@example.test', 'SIGNUP', '000000', null), (error) => error.code === 'EMAIL_CODE_INVALID');
+    assert.equal(row.attempts, 1);
+    await verification.verify('new@example.test', 'SIGNUP', '123456', null);
+    assert.ok(row.consumedAt instanceof Date);
+});
+
+test('signup verification email and persisted expiry both use a five-minute TTL', async () => {
+    let saved;
+    let sent;
+    const prisma = {
+        emailVerification: {
+            findUnique: async () => null,
+            upsert: async ({ create }) => { saved = create; },
+        },
+    };
+    const mailer = { send: async (...args) => { sent = args; } };
+    const before = Date.now();
+    const result = await new EmailVerificationService(prisma, mailer).send('new@example.test', 'SIGNUP', null);
+    const after = Date.now();
+    assert.ok(saved.expiresAt.getTime() >= before + 5 * 60 * 1000);
+    assert.ok(saved.expiresAt.getTime() <= after + 5 * 60 * 1000);
+    assert.match(sent[2], /5분 안에 입력/);
+    assert.doesNotMatch(sent[2], /10분/);
+    assert.ok(Date.parse(result.expiresAt) >= before + 5 * 60 * 1000);
+    assert.ok(Date.parse(result.resendAvailableAt) >= before + 60 * 1000);
+});
+
+test('verification resend cooldown returns the exact next-send time', async () => {
+    const sentAt = new Date(Date.now() - 10_000);
+    const prisma = { emailVerification: { findUnique: async () => ({ sentAt }) } };
+    await assert.rejects(
+        new EmailVerificationService(prisma, {}).send('new@example.test', 'SIGNUP', null),
+        (error) => error.code === 'EMAIL_CODE_COOLDOWN' && error.details.resendAvailableAt === new Date(sentAt.getTime() + 60_000).toISOString(),
+    );
+});
+
+test('failed initial email delivery removes the unsent code so the user can retry', async () => {
+    let created;
+    let deleted;
+    const prisma = {
+        emailVerification: {
+            findUnique: async () => null,
+            upsert: async ({ create }) => { created = { id: 'unsent', ...create }; return created; },
+            deleteMany: async ({ where }) => { deleted = where; },
+        },
+    };
+    const mailer = { send: async () => { throw new Error('mail unavailable'); } };
+    await assert.rejects(
+        new EmailVerificationService(prisma, mailer).send('new@example.test', 'SIGNUP', null),
+        (error) => error.code === 'EMAIL_SEND_FAILED',
+    );
+    assert.deepEqual(deleted, { id: 'unsent' });
+    assert.ok(created);
+});
+
+test('fifth incorrect code attempt asks the user to request a new code', async () => {
+    const row = {
+        id: 'verification',
+        codeHash: createHash('sha256').update('123456').digest('hex'),
+        expiresAt: new Date(Date.now() + 60_000), attempts: 4, userId: null, consumedAt: null,
+    };
+    const prisma = {
+        emailVerification: {
+            findUnique: async () => row,
+            update: async ({ data }) => { row.attempts += data.attempts.increment; },
+        },
+    };
+    await assert.rejects(
+        new EmailVerificationService(prisma, {}).check('new@example.test', 'SIGNUP', '000000', null),
+        (error) => error.code === 'EMAIL_CODE_INVALID' && error.getResponse().error.message.includes('입력 횟수를 초과'),
+    );
+    assert.equal(row.attempts, 5);
+});
+
 test('terms documents accept HTML and HTM alongside PDF and TXT with matching MIME', () => {
     const body = { type: 'SERVICE', title: 'Terms', content: 'Summary' };
     for (const [extension, mimeType] of [['html', 'text/html'], ['htm', 'text/html'], ['pdf', 'application/pdf'], ['txt', 'text/plain']]) {
@@ -42,6 +145,10 @@ test('terms documents accept HTML and HTM alongside PDF and TXT with matching MI
         assert.equal(termsSchema.safeParse({ ...body, attachment: { ...attachment, mimeType: 'application/octet-stream' } }).success, false);
     }
     assert.equal(termsSchema.safeParse({ ...body, attachment: { url: `/uploads/${'a'.repeat(32)}.zip`, name: 'terms.zip', size: 12, mimeType: 'application/zip', mediaType: 'FILE' } }).success, false);
+    const attachment = { url: `/uploads/${'a'.repeat(32)}.pdf`, name: 'terms.pdf', size: 12, mimeType: 'application/pdf', mediaType: 'FILE' };
+    assert.equal(termsSchema.safeParse({ ...body, content: '', attachment }).success, true);
+    assert.equal(termsSchema.safeParse({ ...body, content: '', attachment: null }).success, false);
+    assert.equal(termsSchema.parse({ type: 'SERVICE', content: '', attachment }).title, '');
 });
 
 function policyDb(rows) {
@@ -342,6 +449,37 @@ test('create/update enforce mandatory SERVICE and allocate versions under lock; 
     await terms.remove(master, 'created');
     assert.equal(fixture.state.terms.some((row) => row.id === 'created'), false);
     assert.equal(fixture.calls.filter((call) => call === 'lock').length, 3);
+});
+
+test('terms draft persists a real uploaded attachment and rejects mismatched file size', async () => {
+    const previousUploadDir = process.env.UPLOAD_DIR;
+    const previousStorageDriver = process.env.STORAGE_DRIVER;
+    const directory = await mkdtemp(join(tmpdir(), 'weplay-terms-'));
+    process.env.UPLOAD_DIR = directory;
+    process.env.STORAGE_DRIVER = 'local';
+    try {
+        const buffer = Buffer.from('%PDF-terms-fixture');
+        const attachment = await new UploadsService().saveAttachment({
+            originalname: 'terms.pdf', mimetype: 'application/pdf', size: buffer.length, buffer,
+        });
+        const fixture = transactionDb();
+        const terms = new TermsService(fixture.db, fixture.audit, fixture.mail);
+        await terms.create(master, { ...input, title: '', attachment });
+        assert.deepEqual(fixture.state.terms.find((row) => row.id === 'created').attachment, attachment);
+        assert.equal(fixture.state.terms.find((row) => row.id === 'created').title, '서비스 이용약관');
+
+        await assert.rejects(
+            terms.create(master, { ...input, title: 'Invalid terms', attachment: { ...attachment, size: attachment.size + 1 } }),
+            (error) => error.getStatus() === 400,
+        );
+        assert.equal(fixture.state.terms.filter((row) => row.title === 'Invalid terms').length, 0);
+    } finally {
+        if (previousUploadDir === undefined) delete process.env.UPLOAD_DIR;
+        else process.env.UPLOAD_DIR = previousUploadDir;
+        if (previousStorageDriver === undefined) delete process.env.STORAGE_DRIVER;
+        else process.env.STORAGE_DRIVER = previousStorageDriver;
+        await rm(directory, { recursive: true, force: true });
+    }
 });
 
 test('real HTTP JWT guard blocks unconsented USER but leaves consent, identity, deactivation and MASTER routes open', async () => {

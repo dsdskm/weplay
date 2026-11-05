@@ -17,6 +17,7 @@ export interface LegalDocument {
 }
 
 export function LegalDocumentBody({ document }: { document: LegalDocument }) {
+    const previewable = document.attachment && ['application/pdf', 'text/plain', 'text/html'].includes(document.attachment.mimeType);
     return (
         <article className="space-y-4 break-words">
             <h2 className="text-lg font-bold">{document.title} <span className="text-sm font-normal text-slate-500">v{document.version}</span></h2>
@@ -25,8 +26,15 @@ export function LegalDocumentBody({ document }: { document: LegalDocument }) {
                 <span>게시일: {document.publishedAt ? new Date(document.publishedAt).toLocaleString('ko-KR') : '미정'}</span>
             </div>
             {document.changeSummary && <p className="whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm">변경 사항: {document.changeSummary}</p>}
-            {document.attachment && <a className="block break-all text-sm text-brand-700 underline" href={assetUrl(document.attachment.url)} target="_blank" rel="noopener noreferrer">첨부 문서: {document.attachment.name}</a>}
-            <div className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{document.content}</div>
+            {document.attachment && <>
+                {previewable && <iframe
+                    title={`${document.title} 문서 미리보기`}
+                    src={assetUrl(`${document.attachment.url}?preview=1`)}
+                    sandbox={document.attachment.mimeType === 'application/pdf' ? 'allow-scripts' : ''}
+                    className="h-72 w-full rounded-md border border-slate-200 bg-white sm:h-96"
+                />}
+            </>}
+            {document.content && <div className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{document.content}</div>}
         </article>
     );
 }

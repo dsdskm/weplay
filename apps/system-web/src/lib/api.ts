@@ -52,11 +52,11 @@ export async function uploadAdminImage(file: File) {
   return data as { url: string; mediaType: 'IMAGE' | 'VIDEO' };
 }
 
-export async function uploadAdminAttachment(file: File) {
+async function uploadAdminAttachmentTo(file: File, path: string) {
   const token = tokenStore.get();
   const form = new FormData();
   form.append('file', file);
-  const res = await fetch(`${API_URL}/admin/uploads/attachments`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: form });
+  const res = await fetch(`${API_URL}${path}`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: form });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (res.status === 401) tokenStore.clear();
@@ -65,6 +65,15 @@ export async function uploadAdminAttachment(file: File) {
   const parsed = attachmentSchema.safeParse(data);
   if (!parsed.success) throw new Error('첨부 파일 응답이 올바르지 않습니다');
   return parsed.data;
+}
+
+export function uploadAdminAttachment(file: File) {
+  return uploadAdminAttachmentTo(file, '/admin/uploads/attachments');
+}
+
+export function uploadAdminTermsAttachment(file: File, type: string) {
+  if (type !== 'SERVICE' && type !== 'PRIVACY') throw new Error('약관 종류를 확인할 수 없어요');
+  return uploadAdminAttachmentTo(file, `/admin/uploads/terms/${type}/attachments`);
 }
 
 /** 업로드 주소를 화면에 보여 줄 전체 주소로 */

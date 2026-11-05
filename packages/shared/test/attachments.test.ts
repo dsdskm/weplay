@@ -6,6 +6,8 @@ const file = { url: `/uploads/${'a'.repeat(32)}.pdf`, name: 'report.pdf', size: 
 
 test('attachments accept uploaded documents and strip unrelated upload fields', () => {
     assert.deepEqual(attachmentSchema.parse({ ...file, buffer: 'raw', remoteUrl: 'https://example.com' }), file);
+    assert.equal(attachmentSchema.safeParse({ ...file, url: `/uploads/terms/terms-of-service/${'b'.repeat(32)}.pdf` }).success, true);
+    assert.equal(attachmentSchema.safeParse({ ...file, url: `/uploads/terms/private-policy/${'b'.repeat(32)}.pdf` }).success, true);
     assert.equal(attachmentSchema.safeParse({ ...file, url: `/uploads/${'b'.repeat(32)}.png`, mimeType: 'image/png', mediaType: 'IMAGE' }).success, true);
     assert.equal(attachmentSchema.safeParse({ ...file, url: `/uploads/${'b'.repeat(32)}.mp4`, mimeType: 'video/mp4', mediaType: 'VIDEO' }).success, true);
     for (const extension of ['html', 'htm']) {
@@ -22,7 +24,7 @@ test('attachment inputs preserve omitted updates and explicit clearing', () => {
 });
 
 test('unsafe URLs, invalid metadata and excessive counts are rejected', () => {
-    for (const url of ['https://example.com/a.pdf', '//example.com/a.pdf', '/uploads/../a.pdf', `${file.url}?x=1`, `${file.url}/x`, `/uploads/${'a'.repeat(32)}.svg`]) {
+    for (const url of ['https://example.com/a.pdf', '//example.com/a.pdf', '/uploads/../a.pdf', `${file.url}?x=1`, `${file.url}/x`, `/uploads/${'a'.repeat(32)}.svg`, `/uploads/terms/unknown/${'a'.repeat(32)}.pdf`]) {
         assert.equal(attachmentSchema.safeParse({ ...file, url }).success, false, url);
     }
     for (const size of [0, -1, 1.5, MAX_ATTACHMENT_SIZE + 1]) assert.equal(attachmentSchema.safeParse({ ...file, size }).success, false);

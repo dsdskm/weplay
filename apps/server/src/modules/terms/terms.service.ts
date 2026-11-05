@@ -13,8 +13,8 @@ import { TermsMailService } from './terms-mail.service';
 
 export const termsSchema = z.object({
   type: z.enum(['SERVICE', 'PRIVACY', 'MARKETING']),
-  title: z.string().trim().min(1).max(100),
-  content: z.string().trim().min(1).max(100000),
+  title: z.string().trim().max(100).default(''),
+  content: z.string().trim().max(100000).default(''),
   required: z.boolean().optional(),
   effectiveAt: z.string().datetime().nullable().optional(),
   changeSummary: z.string().trim().max(5000).default(''),
@@ -22,8 +22,16 @@ export const termsSchema = z.object({
     (file.url.endsWith('.pdf') && file.mimeType === 'application/pdf') ||
     (file.url.endsWith('.txt') && file.mimeType === 'text/plain') ||
     (/\.(html|htm)$/.test(file.url) && file.mimeType === 'text/html'), '약관 파일은 PDF, TXT 또는 HTML만 사용할 수 있어요').nullable().optional(),
+}).refine((input) => input.content.length > 0 || !!input.attachment, {
+  path: ['attachment'],
+  message: '약관 문서를 첨부해 주세요',
 });
 export type TermsInput = z.infer<typeof termsSchema>;
+const DEFAULT_TERMS_TITLES: Record<TermsInput['type'], string> = {
+  SERVICE: '서비스 이용약관',
+  PRIVACY: '개인정보 처리방침',
+  MARKETING: '마케팅 정보 수신 동의',
+};
 
 export const agreeSchema = z.object({ termsIds: z.array(z.string().min(1)).min(1).max(10) });
 
@@ -118,7 +126,7 @@ export class TermsService {
         data: {
           type: input.type,
           version: (last?.version ?? 0) + 1,
-          title: input.title,
+          title: input.title || DEFAULT_TERMS_TITLES[input.type],
           content: input.content,
           required: input.type === 'SERVICE' ? true : input.required ?? input.type === 'PRIVACY',
           attachment: input.attachment ?? Prisma.DbNull,
@@ -143,7 +151,7 @@ export class TermsService {
       if (row.status !== 'DRAFT' || row.type !== input.type) throw new AppError(ErrorCode.VALIDATION_FAILED, '초안만 수정할 수 있고 약관 종류는 변경할 수 없어요', 400);
       await tx.terms.update({
         where: { id }, data: {
-          title: input.title, content: input.content,
+          title: input.title || row.title, content: input.content,
           required: row.type === 'SERVICE' ? true : input.required ?? row.required,
           attachment: input.attachment === undefined ? undefined : input.attachment ?? Prisma.DbNull,
           changeSummary: input.changeSummary,

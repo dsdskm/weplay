@@ -12,7 +12,14 @@ async function bootstrap() {
     origin: (process.env.CORS_ORIGINS ?? 'http://localhost:3000,http://localhost:3001,http://localhost:3002').split(','),
     credentials: true,
   });
-  app.setGlobalPrefix('api/v1', { exclude: [{ path: 'uploads/:name', method: RequestMethod.GET }, { path: 'uploads/:name', method: RequestMethod.HEAD }] });
+  app.setGlobalPrefix('api/v1', {
+    exclude: [
+      { path: 'uploads/:name', method: RequestMethod.GET },
+      { path: 'uploads/:name', method: RequestMethod.HEAD },
+      { path: 'uploads/terms/:folder/:name', method: RequestMethod.GET },
+      { path: 'uploads/terms/:folder/:name', method: RequestMethod.HEAD },
+    ]
+  });
   app.useGlobalFilters(new AppExceptionFilter());
   const port = Number(process.env.PORT ?? process.env.SERVER_PORT ?? 4000);
   await app.listen(port);
